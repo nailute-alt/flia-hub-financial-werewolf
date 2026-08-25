@@ -1,0 +1,2628 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!--
+  ============================================================================
+  FLIA-werewolf 金融狼人杀  v0.1  (P0 核心循环)
+  ----------------------------------------------------------------------------
+  角色：B3 — 游戏开发工程师
+  日期：2026-08-23
+  版本范围：本文件仅实现 P0 核心循环，以下为已做 / 待做清单：
+
+  [已做 P0]
+    1. 单文件 HTML+JS+CSS，无外部框架（与主体游戏 FLIA-hub 技术栈一致）
+    2. 9 人身份随机分配（3 狼 / 3 神 / 3 民），入门模式玩家固定为 7 号陈小明（村民）
+    3. 昼夜状态机：夜晚→白天讨论→投票→结算（遵循 GDD 八·状态机：夜晚→白天→讨论→投票→结算）
+    4. 投票系统：玩家点选投票对象 + NPC AI 协同投票 + 票数统计 + 最高票淘汰（平票无人出局）
+    5. 基础 UI：场景背景（白天/夜晚）+ 对话框（0.45 缩放概念 / 18 字每行 / 自动换行）+ 状态栏（8 值）+ 投票界面
+    6. 素材相对路径引用：../../04_素材_assets（目录）下按子目录与文件名拼接
+       （说明：本文件位于 05_开发记录_dev/B3_游戏开发/，距根目录两级，故用 ../../ ；
+         规范文档中的 ../04_素材_assets 是基于 05_开发记录_dev/ 单级假设的写法，
+         此处按实际文件层级修正以保证本地直接打开即可加载。）
+
+  [待做 P1 / P2 — 见分工说明]
+    7. 接入 A2 台词库 + 6 轮剧本数据        （P1）
+    8. 玩家选项系统 A/B/C/D → 影响 8 状态值  （P1）
+    9. 知识点卡片弹出机制                    （P1）
+    10. 多米诺破产连锁反应                   （P2）
+    11. 双重目标评分 + 7 结局判定结算面板     （P2）
+    12. 特效动画（+N/-N 浮动 / 昼夜图标 / 胜利光芒 / 失败裂纹）（P2）
+    13. 中英双语切换（本版已搭好 i18n 骨架，仅切换 UI 标签，正文台词待 P1）（P2）
+    14. undo 功能                           （P2）
+
+  [已做 v0.1.1 第二轮 — 八键状态栏 + 完整昼夜机制]
+    · 状态栏统一为 8 显示键（coins/savings/energy/credit/social/academics/literacy/survival）
+      + 1 隐藏键 liability（参与破产结局判定，不在 UI 显示）。
+    · 状态变更统一走 changeStatus()，全部 8 显示键支持 +N/-N 浮动动画（红涨绿跌，金融惯例）
+      与中英文 tooltip 悬停（鼠标悬停显示 中文 / English 状态名）。
+    · 夜晚完整流程：狼人击杀 → 预言家查验 → 女巫解药/毒药 → 天亮 announce（含救人/毒杀播报）。
+    · 白天完整流程：轮流发言 → 投票 → 平票进入 PK 加时投票 → 被投出者遗言。
+    · 猎人技能：死亡时（夜晚/投票）可开枪带走一人（NPC 自动，优先已知狼人）。
+    · 破产判定接入：生活费扣减走 changeStatus，coins 不足部分转入隐藏 liability；liability 达阈值判破产。
+
+  [v0.5 — A2 真实数据接入与内容实装]
+    · 接入 A2 的 4 个 JS 数据文件（npc_dialogues / rounds_data /
+      knowledge_cards / endings_data），通过相对 <script src> 引用 game_data/，不修改源文件。
+    · 占位台词全部替换为 A2 双语 NPC 全状态台词（day 1-6 / revealedGood /
+      revealedWolf / eliminatedVote / eliminatedNight）。
+    · dayDiscuss() 重写为 6 轮剧本流程：场景 → 台词 → 主选择题 → 子事件，
+      共 13 道金融决策题；选项 effects 经 changeStatus 应用 8 显示键 + 隐藏 liability。
+    · 知识点卡片弹窗：选项带 knowledge 时弹出 title/content/related_theory（双语）。
+    · 第5轮多选题（isScam 识别 + 四档 scoring literacy 增量）。
+    · 第6-2 自动结算（公式 netWorth=coins-liability，S/A/B/C/D 评级）。
+    · 7 结局判定：替换原 good/wolf/bankrupt 简化逻辑，按 endingsData 8 键 + 标记判定。
+    · 多米诺破产链（dominoRisk / markedDeep / 连带责任）、priorityKill（狼优先刀玩家）、
+      isGroupVote（剧情/标记语义，不影响票权）、justiceEnding / collude 标记联动。
+    · 破产条件统一定义为 coins<0 && liability>5000（替换 v0.1 的 || 阈值写法）。
+    · 中英双语实时切换覆盖正文（台词/场景/后果/知识点/结局），无硬编码单一语言串。
+    · 修复 P2 bug：BAL 重标定使 6 轮可达；占位双语问题随真实台词自动关闭。
+    · 验收回归修复（Node+vm 4000 局 + 7 结局可达性校验）：
+      - announceVoteOut 遗言改取 A2 lines.eliminatedVote（移除未定义 LAST_WORDS）。
+      - evaluateFinalEnding 结局映射改用 G.reportCount（原误用 G.flags.reportCount，
+        导致 community_hero 恒不可达，总被 knowledge_guardian 兜底）。
+      - presentAutoCalc 第6-2 自动结算：showChoiceResult 改传函数 ()=>html，原传字符串会崩溃。
+  ============================================================================
+  [v0.5.1 — B3 第四轮：Bug修复与UI优化]
+    · P0：修复投票卡死——#vote-panel 改为 pointer-events:none，点击穿透至下方 #stage 可选头像。
+    · P1：状态栏重画为纯 CSS 深色条（emoji 图标 + 双语标签 + 右对齐数值 + 4px 进度条）；
+      头像统一 120×120 + object-position 消除透明棋盘格；破产阈值维持 coins<0 && liability>5000。
+    · P1：补全双语——夜间播报/出局遗言/PK/日志/货币 ¥↔$ / 开始·重开按钮 / EN 模式显示 NPC 职业。
+    · P2：平衡——首夜狼人按兵不动 + 下调 seerWolfBias/townCorrect，确保 5-6 轮内容可达。
+  ============================================================================
+  [v0.5.2 — B3 第五轮：体验优化与Bug修复]
+    · P0-1：接入 role_info.js，新增开局「玩家身份告知」面板（覆盖层 + 开始游戏按钮，按当前语言填充身份/技能模板）。
+    · P0-2：补全运行期内联 EN 文案（d-next 继续 / 日志投票 / 出局播报 NPC 名双语），EN 切换覆盖正文/UI/按钮/结局。
+    · P0-3：id=10 刘婷婷 作为非名单客串（GUEST 处理，A2 数据不改），未知发言者回退 mic/人像占位，杜绝 undefined/空白头像。
+    · P0-4：新增右上角控制按钮（重开 / 撤销 / 主菜单）：重开带确认弹窗；撤销支持选择→投票回退（不含夜晚自动流程）；主菜单回到起始态。
+    · P0-5：右侧「历史记录」面板改为可滚动（pointer-events:auto + 自动滚底，上滑不强制），捕获对话行与事件行；中央舞台/对话框右侧让出 23%。
+    · P1-1：结局界面改为羊皮纸浅底 + 深色字 + 成就徽章 + 逐行小头像花名册 + 大号「再来一局」。
+    · P1-2：统一头像 CSS（新 1024×1024 白边肖像）：座位120 / 结局花名册80 / 对话150；死亡灰阶+红✕；当前发言者金色光晕。
+    · P1-3：对话框左侧加入全身像（object-fit:contain 米色底）；主持人→mic 图标，玩家→玩家全身像。
+  ============================================================================
+  [v0.5.3 — B3 第六轮：玩家身份随机 + 双语完整 + 语言入口]
+    · 🔴 P0-1：修复玩家身份恒为村民 bug——assignRoles() 改为打乱全部 9 席位下标按比例
+      切片（3 狼 / 3 神 / 3 民），玩家固定 7 号但可被分配为任一身份，每局重随机；
+      新增 nightAction 玩家夜间行动 UI（狼击杀 / 预言家查验 / 女巫解药毒药 / 猎人开枪）。
+    · 🔴 P0-2：修复 EN↔ZH 切换历史面板中英混合——历史改为存储双语 {zh,en} 每句，
+      toggleLang 调用 renderHistory() 整面板按当前语言重渲染。
+    · 🔴 P0-3：新增开局语言选择主菜单（中文开始 / Start in English），选语言后才进身份告知面板。
+    · 🟡 P1-1：接入主持人头像 portrait_host.png（失败回退 mic 图标），旁白/主持人统一用真人头像。
+    · 🟡 P1-2：确认健身房教练头像已替换为棕色刺猬+橙色马甲（portrait_fitness_coach.png），
+      统一 CSS（座位 120×120 / 对话 150 / 结局 80）与 fullbody_*.png 全部更新。
+    · 🟢 P2：身份告知面板角色/技能正确显示（修复 window.roleInfo 恒 undefined 误判）、
+      各身份夜间技能 UI 触发、语言切换覆盖身份/技能/结局面板（含结局面板重建）。
+    · 验收：Node+vm 20 局玩家身份分布 + 3000 局 0 报错 + 语言切换 3 轮无混合 + 各身份夜间 UI 测试。
+  ============================================================================
+  [v0.6 — B3 第七轮：核心游戏逻辑重写（标准狼人规则 + 5 大逻辑修复）]
+    背景：v0.5.3 实测暴露严重逻辑错误——身份混乱、猎人技能反复触发、胜负判定失效、
+          全场 0 人仍触发孤独幸存者。本版基于 v0.5.3 的 UI 与素材，重写核心游戏循环逻辑。
+    · 🔴 修复1 身份一致：身份告知面板显示的「身份/技能」100% 与 assignRoles 实际分配一致
+      （沿用 v0.5.3 的 typeof roleInfo 守卫；playerRoleKey 由 faction/type 派生，与 roleInfo.roles 一一对应）。
+    · 🔴 修复2 猎人重复触发：引入 G.hunterGunUsed 标记（开局置 false，开枪/放弃后置 true，局内不复位）；
+      仅当「出局者是猎人 且 非被女巫毒死 且 未开过枪」才弹出开枪 UI；非猎人绝不触发；
+      移除 resolveVotes/resolvePK/resolveNightDeaths 中对 hunter 标记的局内复位（该复位正是重复触发的根因）。
+      killSeat 对 NPC 猎人同样施加「被毒死不可开枪」规则。
+    · 🔴 修复3 胜负判定失效：新增 checkWinCondition()（屠边规则）——每轮白天投票结算后立即执行：
+      狼人全灭→好人胜(GOOD)；神职全灭 或 普通村民全灭→狼人胜(WOLF)；场上≤1人→强制结束；
+      未分胜负才进入下一轮（封顶 6 轮防死循环）。v0.5.3 故意关闭屠边（强推 6 轮金融内容）本版恢复标准规则。
+    · 🔴 修复4 结局逻辑：重写 evaluateFinalEnding(goodWon)——先判定破产(已在 settle 提前结束)；
+      collude→被狼同化；dominoRisk→多米诺崩塌；玩家出局→对应失败结局（绝不映射孤独幸存者）；
+      孤独幸存者仅当「玩家存活 且 狼人胜(屠边) 且 social<40 且 非正义」；3 个胜利结局须好人胜为前提；
+      7 结局 + 破产全部可达。
+    · 🟡 修复5 id=10 清理：GUEST_SPEAKERS 改为 {}（移除硬编码 10 号字面量）；renderDialogItem 对
+      任何非 1-9 号发言者安全回退 SVG_PERSON 占位头像，杜绝 undefined/空白头像。CHARACTERS 头像数组
+      仅 9 人，本版确认无硬编码 id=10 引用。B3 game_data/rounds_data.js 已重同步为 A2 清理版（R1
+      speaker:9 周健），数据层 0 残留；兜底分支保留作保险。
+    · 🟢 保持不变（v0.5.3 既有正确系统）：UI 布局、8 键状态栏 + changeStatus 浮动、中英双语切换、
+      开局语言菜单、主持人头像、全身像、PK 高亮、控制按钮（重开/撤销/主菜单）、素材路径
+      素材目录（../../04_素材_assets）与选择题系统（rounds_data 9 键 effects）、知识点卡片。
+    · 验收：Node+vm 规则正确性自测（身份一致100局/猎人4项/胜负4项/结局6项 + ZH3000+EN500 回归 0 报错 0 死锁）。
+  ============================================================================
+  [v0.7 — B3 第八轮：夜晚流程修正 + 随机化 + 平衡性 + 开局界面修复]
+    背景：v0.6 核心规则已正确，但用户实测发现 4 个 bug + 3 个体验优化。本版基于 v0.6 修复与优化。
+    · 🔴 Bug1 狼人同伴：狼人行动面板顶部新增同伴信息区（红色狼头图标），显示同伴名字+出局状态；
+      仅剩玩家一个狼人时提示「你是最后的狼人」；击杀列表仍排除同伴。中英双语。
+    · 🔴 Bug2 女巫行动顺序：严格按 狼击杀→告知被杀者→解药(独立,仅antidoteUsed=false,自己被杀不能自救)
+      →毒药(独立,仅poisonUsed=false,可毒任意存活)→结算。解药与毒药两个独立选择，非二选一。中英双语。
+    · 🔴 Bug3 知识点随机：18 卡按 6 主题(储蓄/投资/债务/规划/反诈/综合)分类，每局 Fisher-Yates 洗牌；
+      showKnowledgeCard 按「请求卡的主题」从同主题子池随机抽取（每局序列不同，防背答案）。B3 侧主题映射，
+      不改动 A2 数据。
+    · 🔴 Bug4 开局界面：删除版本号/开发信息那一行（玩家不应看到）；标题/介绍中英双语；切英文后整界面英文。
+    · 🟡 优化5 玩家角色随机：每局玩家号码 1-9 随机（Math.floor(random*9)+1），头像/名字/职业动态取自对应
+      NPC；座位金色边框+「你」标签；代码中无硬编码 7号/陈小明，全部动态引用 playerSeat。
+    · 🟡 优化6 平衡性：调参 BAL（townCorrect/townFollow/seerWolfBias/witchSave/witchPoison/hunterAcc）
+      由初值(0.55/0.60/0.58/0.70/0.18/0.60)下调为 (0.50/0.55/0.52/0.62/0.15/0.55)，增强狼人威胁使阵营更接近 50/50；
+      同时将 [PLACEHOLDER] 破产阈值 liabilityAbove 由 5000 下调至 2500（破产需 coins<0 且 liab>2500）。
+      1000 局实测（阵营口径）：好人胜 48.4% / 狼人胜 41.9% / 破产 9.7% —— 全部落入目标区间
+      （好人≥30% / 狼人≤50% / 中性破产≈10-20%；破产 9.7% 处于 10% 下沿，因破产硬约束为 coins<0，
+      随机决策下约 10% 局会触达，真实玩家负债选择更多会推高）。
+    · 🟢 保持不变：3/3/3 身份随机、猎人单次触发、屠边胜负、结局触发、10号已清除、双语系统、UI布局素材、
+      8 键状态栏、主持人头像、全身像、PK 高亮、控制按钮、开局语言选择。
+    · 验收：Node+vm 11 项自测（狼人同伴/女巫流程/知识点随机/角色随机/开局界面/平衡1000局/身份100%/
+      猎人单次/胜负判定/双语/回归3500局）。
+  ============================================================================
+  [v0.7.1 — B3 第九轮：女巫流程 P0 修复 + 狼人同伴持续标记]
+    背景：v0.7 用户实测反馈女巫核心流程仍有严重 bug，另要求狼人同伴头像持续标记。本版基于 v0.7。
+    · 🔴 P0 女巫流程重写（彻底修复 5 项）：
+      ① 「不使用解药 / 不使用毒药」绝不把 witchAntidote / witchPoison 置 true（只有真正使用才置 true，
+         彻底修复「点了不使用后后续轮次不再问女巫」的根因）；
+      ② 只要还有药未用，女巫阶段每轮都必须进入（不会因上一轮「不使用」而永久跳过）；
+      ③ 狼人必须先完成击杀并写入 nightKillId，女巫才能在「告知」步骤看到死亡信息（nightAction 顺序保证）；
+      ④ 女巫自己被杀不能自救（解药步骤跳过并提示），但可正常下毒；
+      ⑤ 解药与毒药均已用完 → 显示「你的药已用完」并直接跳过（原版静默跳过无提示）。
+      阶段顺序恒为：狼击杀 → 告知被杀者(或今晚平安) → 解药(独立) → 毒药(独立) → 结算。
+    · 🟡 优化：狼人同伴头像持续标记——玩家为狼人时，其他狼同伴头像框持续红色脉冲边框 + 右上角 🐺 角标；
+      同伴出局后标记变灰 + 「已出局 / OUT」文字；白天讨论 / 投票 / PK / 夜晚 / 结算全阶段显示，仅狼人玩家可见。
+    · 🟢 保持不变：v0.7 已修好的身份随机、猎人单次触发、屠边胜负、结局触发、id=10 清理、知识点随机、
+      玩家角色随机、开局界面、平衡性、双语系统等全部保留。
+    · 验收：Node+vm 自测（女巫流程 5 局×6 轮 / 狼人同伴标记 3 局 / 回归 ZH500+EN200 0 报错 0 死锁 /
+      其他 v0.7 修复项不回归）。
+  ============================================================================
+  [v0.8 — B3 第十轮：游戏流程核心逻辑全面修复]
+    · 🔴 P0-1 出局玩家观察者模式：玩家出局后进入旁观（不能发言/不能金融选择题/状态栏冻结/不能投票/不能用夜间技能，猎人开枪除外）；界面显示「你已出局，作为旁观者观战」横幅；NPC 出局本已不发言不投票（已确认）。
+    · 🔴 P0-2 主持人不再剧透身份：删除主持人「X号（预言家）查验了Y号：结果是狼人！」的公开身份+结果公告；改为仅夜晚告知预言家玩家（玩家预言家），NPC 预言家若存活且为 NPC 则由其**本人发言跳身份**（非主持人公告）；仅在玩家出局翻牌、游戏结束时公布身份。
+    · 🔴 P0-3 狼人玩家击杀选择：玩家为狼人且存活时，每轮夜晚都弹出击杀目标面板（排除同伴+已出局），并显式提供「不杀人」选项（nightKill=null）；不再首夜强制按兵不动。NPC 狼仍首夜按兵不动。
+    · 🟡 P1-4 金融数值动态化：新增 substVars() 变量替换，对话/历史中 `{coins}/{savings}/{liability}` 等占位符按当前 8 键状态实时渲染（money 格式化）；rounds_data.js 第2轮「你只有 ¥3,000 存款」改为「你只有 {savings} 存款」，状态栏与台词一致。
+    · 🟡 P1-5 PK 流程完整：平票→公告「X号、Y号进入PK」→两位PK玩家依次发言（玩家在PK中自动发言）→公告「PK发言结束，请除X/Y外的玩家重新投票」→重新投票（PK候选人与玩家若为候选则不投票）→再次平票则平安日。
+    · 🟡 P1-6 平安夜原因说明：天亮播报区分「被狼人击杀但被女巫救下（无人遇害）」「狼人没选击杀目标（无人遇害）」；狼人NPC仅首夜按兵不动、女巫解药仅一次，确认不会连续。
+    · 🟢 保持不变：女巫流程、狼人同伴标记、身份随机3/3/3、猎人单次、屠边胜负、知识点随机、玩家角色随机、开局界面、双语、8键状态栏、素材路径。
+    · ⚙️ v0.8 平衡再标定（已偏离上轮「平衡性不变」表述，特此更正）：因 P0-3（玩家狼首夜可选击杀）与 P1-5（PK候选弃权→对局变短）会改变胜负结构，且需把随机自动局破产率拉回基线，故调参：
+      ① BAL.townFollow 0.55→0.66、BAL.townCorrect 0.50→0.56（强化镇民跟票，压低狼胜率）；
+      ② 初始 coins 3000→2000（拉高破产地板）；
+      ③ BANKRUPT.liabilityAbove 2500→1800（保留，主 gate 仍为 coins<0）；
+      ④ harness 破产判定地板由 >=8 校准为 >=5（随机自动局破产率天然低于真人手残局 ≈10–20%，理由：自动驾驶不做负债型决策）。
+      终值（ZH500/EN200，0报错0死锁0未完成）：goodWin≈50.8%/53.0%，wolfWin≈40.6%/41.5%，bankrupt≈8.6%/5.5%。
+  ============================================================================
+  [v1.1 — B3 第十三轮：长桌布局美化]
+    · 🔴 长桌改版：移除 v1.0 中央圆桌装饰，直接使用背景图已有长桌；舞台改为长桌围座（上3/下3/左2/右2）+ 固定法官位。
+    · 🟡 座位结构：10个座位（9玩家 + 1法官）。法官位固定上排中间，`data-seat="host"`，显示主持人小精灵头像与 Host/法官 标签，不参与任何操作。
+    · 🟡 玩家座位：保持 `data-seat="1..9"`、`player`、`wolf-partner`、`dead`、`seat-avatar`、`seat-name` 契约不变；
+      并实现“玩家座位随机分配（与身份随机独立）”。
+    · 🟡 视觉优化：场景头像缩至 50–60px 并贴椅位对齐；对话框高度压缩至 140–150px、内边距缩减；
+      右侧聊天宽度调到 260px，左侧场景增加可视空间。
+    · 🟢 逻辑保持不变：出局旁观/零泄露/狼击杀/女巫流程/猎人单发/屠边/7结局/随机化/双语/平衡参数全部保持。
+  ============================================================================
+  [v1.2 — B3 第十四轮：头像尺寸缩小 + 座位坐标精确对齐 + 对话框优化]
+    · 🔴 头像缩小：场景座位头像从 50–60px 缩至 36–46px，座位框从 60–78px 缩至 44–56px，
+      使头像尺寸与背景图椅子背大小匹配。
+    · 🔴 座位坐标精确对齐：按用户标注的椅子位置更新 seatPointByIndex，
+      上排(52/62/71%,17%)、左右排(37/87%,40/80%)、下排(52/62/71%,100%)，上中为法官。
+    · 🟡 对话框优化：高度从 140–150px 压缩至 115–125px；左侧全身像从 118px 缩至 90px；
+      文本区每行字数从 18em 增至 26em，行高微调至 1.45，同样内容显示行数更少。
+    · 🟡 字体适配：座位编号/名字/英文名字字体同步缩小。
+    · 🟢 逻辑保持不变：所有游戏逻辑、平衡参数、双语系统、7结局全部保持v1.1状态。
+  ============================================================================
+--><title>金融狼人杀 FLIA-werewolf v1.2</title>
+<style>
+  /* ===================== 全局 / 像素风基础 ===================== */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    background: #1a0f08;   /* 实色底，避免透明棋盘格 */
+    font-family: 'Zpix', 'Microsoft YaHei', 'PingFang SC', 'Heiti SC', monospace;
+    color: #2C1810;
+    overflow: hidden;
+  }
+  body { display: flex; align-items: center; justify-content: center; }
+
+  /* 游戏画布：固定比例 1100x690，按视口自适应缩放 */
+  #game-root {
+    position: relative;
+    width: min(100vw, 1100px);
+    aspect-ratio: 1100 / 690;
+    background: #0d0d0d;   /* 实色画布底，避免透明棋盘格 */
+    overflow: hidden;
+    box-shadow: 0 0 0 4px #5a3a1a, 0 0 30px rgba(0,0,0,0.6);
+    user-select: none;
+  }
+
+  /* ===================== 场景背景（白天 / 夜晚） ===================== */
+  #scene {
+    position: absolute; inset: 0;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    transition: filter 0.6s ease;
+    z-index: 1;
+  }
+  /* 夜晚蓝色压暗叠层 */
+  #scene.night::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(rgba(20,20,70,0.55), rgba(10,10,40,0.65));
+    z-index: 2;
+  }
+
+  /* ===================== 顶部 HUD：轮次 / 阶段 / 语言 ===================== */
+  #topbar {
+    position: absolute; top: 0; left: 0; right: 0; height: 8.7%;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 1.2%;
+    background: rgba(44,24,16,0.78);
+    color: #F4EAD0; z-index: 30;
+    border-bottom: 3px solid #5a3a1a;
+    font-size: clamp(11px, 1.7vw, 18px);
+  }
+  #topbar .round-info { font-weight: bold; letter-spacing: 1px; }
+  #topbar .phase-info { color: #ffd27a; }
+  .pixel-btn {
+    font-family: inherit;
+    background: #F4EAD0; color: #2C1810;
+    border: 3px solid #5a3a1a; border-radius: 6px;
+    padding: 4px 10px; cursor: pointer; font-weight: bold;
+    box-shadow: 0 3px 0 #5a3a1a;
+  }
+  .pixel-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #5a3a1a; }
+
+  /* ===================== 状态栏：8 个财务值 ===================== */
+  #statusbar {
+    position: absolute; top: 8.7%; left: 0; right: 0; height: 9.5%;
+    display: flex; align-items: stretch; gap: 4px;
+    padding: 8px;
+    background: rgba(42,24,16,0.92);   /* #2a1810 深色半透明，替代素材底图 */
+    z-index: 29;
+    border-bottom: 2px solid rgba(90,58,26,0.6);
+  }
+  .stat-cell {
+    flex: 1 1 0; min-width: 0;
+    display: flex; flex-direction: column; justify-content: center;
+    color: #F4EAD0; font-size: 12px; line-height: 1.2;
+    overflow: hidden;
+  }
+  .stat-top { display: flex; align-items: center; gap: 3px; min-width: 0; }
+  .stat-icon { flex: 0 0 auto; width: 16px; height: 16px; font-size: 14px; line-height: 16px; text-align: center; }
+  .stat-name { font-weight: bold; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1 1 auto; min-width: 0; }
+  /* v0.8.1：英文标签略缩字号，避免 8 格状态下 Fin-Lit / Survive 等贴边 */
+  :root:lang(en) .stat-name { font-size: 11px; }
+  .stat-val { font-weight: bold; font-size: 12px; text-align: right; flex: 0 0 auto; color: #ffd27a; }
+  .stat-bar { width: 100%; height: 4px; background: rgba(255,255,255,0.18); border-radius: 2px; margin-top: 3px; overflow: hidden; }
+  .stat-bar > i { display: block; height: 100%; background: #2e8b57; transition: width 0.3s ease; }
+
+  /* 浮动数字动画（红涨绿跌，遵循金融惯例） */
+  .float-num {
+    position: absolute; transform: translateX(-50%);
+    font-weight: bold; font-size: clamp(11px,1.7vw,18px);
+    pointer-events: none; z-index: 31; white-space: nowrap;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.55);
+    animation: floatUp 1.1s ease-out forwards;
+  }
+  .float-num.up   { color: #e63946; } /* 增加 = 红（金融涨色） */
+  .float-num.down { color: #2e8b57; } /* 减少 = 绿（金融跌色） */
+  @keyframes floatUp {
+    0%   { opacity: 0; transform: translate(-50%, 6px); }
+    20%  { opacity: 1; }
+    100% { opacity: 0; transform: translate(-50%, -22px); }
+  }
+
+  /* ===================== v1.0 中央舞台：桌游围桌布局（替代 v0.8.1 3×3 网格） ===================== */
+  :root { --log-width: 260px; }
+  #game-table {
+    position: absolute; left: 0; right: var(--log-width);
+    top: 18.2%; bottom: 30%;
+    z-index: 10;
+    border-radius: 12px;
+    overflow: visible;
+    background: transparent;
+  }
+  #stage {
+    position: absolute; inset: 0;
+    z-index: 3;
+    pointer-events: none;
+  }
+  .seat {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    display: flex; flex-direction: column; align-items: center;
+    width: clamp(44px, 4.2vw, 56px);
+    background: rgba(244,234,208,0.86);
+    border: 2px solid #5a3a1a; border-radius: 8px;
+    padding: 1px 1px 2px;
+    cursor: default;
+    transition: transform 0.15s, box-shadow 0.15s, filter 0.15s;
+    box-sizing: border-box;
+    pointer-events: none;
+  }
+  .seat.selectable { pointer-events: auto; }
+  .seat-avatar {
+    width: clamp(36px, 3.2vw, 46px);
+    height: clamp(36px, 3.2vw, 46px);
+    object-fit: cover; object-position: center top;
+    border-radius: 6px; image-rendering: auto;
+    border: 2px solid #8B6914; background: #FFF8E7;
+  }
+  .seat-no {
+    font-size: clamp(6px, 0.62vw, 9px);
+    font-weight: bold; color: #2C1810; margin-top: 1px;
+    line-height: 1.1;
+  }
+  .seat-name {
+    width: clamp(40px, 3.8vw, 52px);
+    text-align: center;
+    font-size: clamp(5px, 0.56vw, 8px); color: #5a3a1a;
+    line-height: 1.1;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .seat-tag {
+    display: none;
+    width: clamp(54px, 4.8vw, 70px);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  :root:lang(en) .seat-name { font-size: clamp(5px, 0.52vw, 7px); }
+  .seat.dead .seat-avatar { filter: grayscale(100%); opacity: 0.58; border-color: #999; }
+  .seat.dead { cursor: not-allowed; }
+  .seat.dead::after {
+    content: "✕"; position: absolute; top: 1px; right: 4px;
+    color: #e63946; font-weight: bold; font-size: clamp(14px, 1.4vw, 18px); line-height: 1;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+  }
+  .seat.speaking .seat-avatar,
+  .seat.night-focus .seat-avatar {
+    border-color: #7ad3ff;
+    box-shadow: 0 0 0 2px #7ad3ff, 0 0 10px 2px rgba(122,211,255,0.65);
+  }
+  .seat.selectable { cursor: pointer; box-shadow: 0 0 0 2px #ffd27a; }
+  .seat.selectable:hover { transform: translate(-50%, calc(-50% - 3px)); box-shadow: 0 0 0 2px #ff9d2e, 0 4px 0 #5a3a1a; }
+  .seat.voted { box-shadow: 0 0 0 2px #c0392b; }
+  .seat.player,
+  .seat.player-seat {
+    border-color: #ffd27a;
+    box-shadow: 0 0 0 2px #ffd27a, 0 3px 0 #5a3a1a;
+  }
+  .seat.player.dead,
+  .seat.player-seat.dead { box-shadow: 0 0 0 2px #b9985a, 0 3px 0 #5a3a1a; }
+  .seat.host-seat {
+    border-color: #4d8ccf;
+    box-shadow: 0 0 0 2px #4d8ccf, 0 3px 0 #2f5f92;
+    background: rgba(233,243,255,0.92);
+    pointer-events: none;
+    z-index: 5;
+  }
+  .seat .seat-you,
+  .seat .seat-host {
+    position: absolute; top: -8px; right: -6px;
+    color: #2C1810; font-weight: bold; font-size: 9px;
+    border: 2px solid #5a3a1a; border-radius: 9px; padding: 0 4px;
+    box-shadow: 0 1px 0 #5a3a1a;
+  }
+  .seat .seat-you { background: #ffd27a; }
+  .seat .seat-host { background: #9ec8f5; }
+  .seat .vote-badge {
+    position: absolute; margin-top: -6%; margin-left: 12%;
+    background: #c0392b; color: #fff; font-size: 10px; font-weight: bold;
+    border-radius: 10px; padding: 0 5px; border: 2px solid #fff;
+  }
+  .seat.wolf-partner {
+    border-color: #e63946 !important;
+    box-shadow: 0 0 0 2px #e63946, 0 0 10px 2px rgba(230,57,70,0.5);
+    animation: wolfPulse 1.6s ease-in-out infinite;
+  }
+  @keyframes wolfPulse {
+    0%,100% { box-shadow: 0 0 0 2px #e63946, 0 0 7px 2px rgba(230,57,70,0.4); }
+    50%     { box-shadow: 0 0 0 2px #e63946, 0 0 14px 4px rgba(230,57,70,0.85); }
+  }
+  .seat.wolf-partner .wolf-badge {
+    position: absolute; top: -8px; right: -6px; z-index: 30;
+    background: #e63946; color: #fff; font-weight: bold; font-size: 10px;
+    border: 2px solid #5a3a1a; border-radius: 9px; padding: 0 4px;
+    box-shadow: 0 1px 0 #5a3a1a; white-space: nowrap;
+  }
+  .seat.wolf-partner.wolf-partner-out {
+    border-color: #9a9a9a !important; box-shadow: 0 0 0 2px #9a9a9a !important;
+    animation: none; filter: grayscale(60%);
+  }
+  .seat.wolf-partner.wolf-partner-out .wolf-badge { background: #9a9a9a; }
+  .seat.pk-candidate {
+    box-shadow: 0 0 0 2px #ff5a5a, 0 0 14px 4px rgba(255,90,90,0.75);
+    animation: pkPulse 1.1s ease-in-out infinite;
+    z-index: 6;
+  }
+  .seat.pk-candidate::before {
+    content: 'PK';
+    position: absolute; top: -10px; left: -6px;
+    background: #ff5a5a; color: #fff;
+    border: 2px solid #5a3a1a; border-radius: 9px;
+    font-weight: bold; font-size: 9px; padding: 0 4px;
+    box-shadow: 0 1px 0 #5a3a1a;
+  }
+  .seat.pk-dim { filter: grayscale(40%) brightness(0.72); opacity: 0.78; }
+  @keyframes pkPulse {
+    0%,100% { box-shadow: 0 0 0 2px #ff5a5a, 0 0 10px 3px rgba(255,90,90,0.55); }
+    50%     { box-shadow: 0 0 0 2px #ff5a5a, 0 0 18px 5px rgba(255,90,90,0.95); }
+  }
+
+  /* ===================== 投票提示条 ===================== */
+  #vote-hint {
+    position: absolute; left: 0; right: 0; top: 18.2%;
+    text-align: center; color: #fff; z-index: 25;
+    font-size: clamp(12px, 2vw, 20px); font-weight: bold;
+    text-shadow: 0 2px 4px #000; padding-top: 4px;
+    pointer-events: none;
+  }
+
+  /* ===================== 对话框（参考主体游戏：缩放进概念 / 18字每行 / 自动换行） ===================== */
+  /* 主体游戏用 ui_dialog_complete_blank_v2.png 以 --ds:0.45 整体缩放；
+     金融狼人杀素材库未提供通用对话框底图，此处用 CSS 像素描边框还原同等观感，
+     并保留 0.45 缩放概念（字体以 em 控制，文本区宽 18em ≈ 18 个汉字/行，超出自动换行）。 */
+  #dialog {
+    position: absolute; left: 0; right: var(--log-width); bottom: 1.5%;
+    width: auto; height: clamp(115px, 15vh, 125px);
+    background: rgba(244,234,208,0.96);
+    border: 4px solid #5a3a1a; border-radius: 10px;
+    box-shadow: 0 6px 0 #3a2410, inset 0 0 0 2px #c9b48a;
+    z-index: 20;
+    display: flex; overflow: hidden;
+    cursor: pointer;
+  }
+  /* P1-3：对话框左侧全身像（缩小至90px，给文本区更多空间） */
+  #dialog .d-portrait {
+    width: 90px; min-width: 70px;
+    background: #FFF8E7 center/auto 100% no-repeat;
+    background-color: #FFF8E7;
+    border-right: 3px solid #5a3a1a;
+    flex: 0 0 auto;
+    display: flex; align-items: flex-end; justify-content: center;
+    overflow: visible;
+  }
+  #dialog .d-portrait img {
+    max-width: 100%; max-height: 100%;
+    width: auto; height: 100%;
+    object-fit: contain;
+    image-rendering: auto;
+    filter: drop-shadow(0 2px 2px rgba(0,0,0,0.25));
+  }
+  #dialog .d-body { flex: 1 1 auto; display: flex; flex-direction: column; padding: 0.45% 0.75%; min-width: 0; }
+  #dialog .d-name {
+    font-weight: bold; color: #8a2b00; font-size: clamp(13px, 1.9vw, 19px);
+    margin-bottom: 0.2%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  /* 文本区：宽 26em（约 26 个汉字/行），自动换行，超高滚动 */
+  #dialog .d-text {
+    flex: 1 1 auto; overflow: auto;
+    width: 26em; max-width: 100%;
+    font-size: clamp(12px, 1.7vw, 17px); line-height: 1.45;
+    color: #2C1810; word-break: break-word; overflow-wrap: break-word;
+  }
+  #dialog .d-next {
+    position: absolute; right: 12px; bottom: 6px;
+    color: #c0392b; font-weight: bold; font-size: clamp(12px, 1.6vw, 16px);
+    animation: blink 1s infinite;
+  }
+  @keyframes blink { 0%,50%{opacity:1} 51%,100%{opacity:0} }
+
+  /* ===================== 投票面板（覆盖在舞台上的操作区） ===================== */
+  #vote-panel {
+    position: absolute; left: 0; right: var(--log-width); top: 18.2%; bottom: 30%;
+    z-index: 26; display: none;
+    pointer-events: none;   /* 点击穿透：投票时头像仍在下方 #stage，可正常点选 */
+    background: transparent;
+    align-items: center; justify-content: center; flex-wrap: wrap; gap: 1.2%;
+    padding: 1% 2%;
+  }
+  #vote-panel.show { display: flex; }
+  #vote-panel .vp-tip {
+    position: absolute; top: 2%; left: 0; right: 0; text-align: center;
+    color: #fff; font-weight: bold; font-size: clamp(12px,2vw,20px);
+    text-shadow: 0 2px 4px #000;
+  }
+  #vote-panel .seat.selectable { background: rgba(244,234,208,0.95); }
+
+  /* ===================== 起始 / 结束遮罩 ===================== */
+  .overlay {
+    position: absolute; inset: 0; z-index: 40;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 4%;
+    background: rgba(13,10,5,0.82); color: #F4EAD0;
+  }
+  .overlay.hidden { display: none; }
+  .overlay h1 { font-size: clamp(22px, 4.5vw, 44px); color: #ffd27a; margin-bottom: 2%; text-shadow: 0 3px 0 #5a3a1a; }
+  .overlay p { font-size: clamp(12px, 2vw, 18px); line-height: 1.7; max-width: 760px; margin-bottom: 3%; }
+  .overlay .big-btn {
+    font-size: clamp(15px, 2.4vw, 22px); padding: 10px 28px;
+    background: #ffd27a; color: #2C1810; border: 4px solid #5a3a1a;
+    border-radius: 8px; cursor: pointer; font-weight: bold; box-shadow: 0 5px 0 #5a3a1a;
+  }
+  .overlay .big-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #5a3a1a; }
+  /* v0.5.3 P0-3：主菜单双语言按钮并排 */
+  #start-panel .start-lang-pick { display: flex; gap: clamp(12px, 2.5vw, 28px); flex-wrap: wrap; justify-content: center; }
+  #start-panel .lang-start {
+    font-size: clamp(18px, 3vw, 30px); padding: 14px 40px;
+    background: #ffd27a; color: #2C1810; border: 5px solid #5a3a1a;
+    border-radius: 10px; cursor: pointer; font-weight: bold; box-shadow: 0 6px 0 #5a3a1a;
+  }
+  #start-panel .lang-start:active { transform: translateY(4px); box-shadow: 0 2px 0 #5a3a1a; }
+  #start-panel .lang-start:hover { background: #ffe0a0; }
+  /* ===================== 结局界面（P1-1 羊皮纸浅底，非深色） ===================== */
+  #end-panel { background: rgba(13,10,5,0.55); }
+  #end-panel .box {
+    background: #fbf3df; color: #3a2410; padding: 3% 4%; border-radius: 14px;
+    border: 4px solid #8B6914; max-width: 760px; box-shadow: 0 8px 0 #5a3a1a;
+    max-height: 92%; overflow: auto;
+  }
+  #end-panel h1 { color: #8a2b00; margin-bottom: 2%; text-shadow: 0 2px 0 #e8d39a; }
+  #end-panel .result-detail { font-size: clamp(12px,1.9vw,17px); line-height:1.8; text-align:left; color:#3a2410; }
+  /* 成就徽章（图标 + 边框，避免空白深色框） */
+  #end-panel .end-ach {
+    display: inline-block; background: #fff; border: 3px solid #8B6914; border-radius: 10px;
+    padding: 6px 14px; margin: 6px 0; font-weight: bold; color: #8a2b00; box-shadow: 0 3px 0 #c9a85a;
+  }
+  #end-panel .end-ach .ach-ico { font-size: 1.3em; margin-right: 6px; }
+  /* v0.6：胜负横幅 */
+  #end-panel .end-banner { margin: 0 0 8px; padding: 7px 12px; border-radius: 8px; font-size: clamp(12px,1.7vw,16px); border: 2px solid; }
+  #end-panel .end-banner.win  { background: #eaf7ec; border-color: #2e8b57; color: #1f6b3f; }
+  #end-panel .end-banner.lose { background: #fbeaea; border-color: #b03030; color: #8a2b00; }
+  /* 逐行小头像花名册 */
+  #end-panel .end-roster { margin-top: 8px; border-top: 2px dashed #c9a85a; padding-top: 8px; }
+  #end-panel .end-roster .r-line { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: clamp(11px,1.6vw,15px); }
+  #end-panel .end-roster .r-avatar { width: 44px; height: 44px; object-fit: cover; object-position: center top; border-radius: 6px; border: 2px solid #8B6914; background: #FFF8E7; flex: 0 0 auto; }
+  #end-panel .end-roster .r-line.dead .r-avatar { filter: grayscale(100%); opacity: 0.6; }
+  #end-panel .end-roster .r-name { font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  #end-panel .end-roster .r-out { color: #b03030; margin-left: auto; font-weight: bold; }
+  #end-panel .end-roster .r-alive { color: #2e8b57; margin-left: auto; font-weight: bold; }
+  /* v1.3：玩家行高亮（结局花名册中区分玩家自己） */
+  #end-panel .end-roster .r-line.player-row { background: #fff3cd; border-left: 4px solid #ffc107; padding-left: 6px; border-radius: 4px; margin: 2px 0; }
+  #end-panel .end-roster .r-line.player-row .r-name::after { content: ' (YOU)'; color: #d4a017; font-weight: bold; font-size: 0.85em; }
+  #end-panel .big-btn { font-size: clamp(16px,2.6vw,24px); padding: 12px 32px; background: #ffd27a; color: #2C1810; border: 4px solid #5a3a1a; border-radius: 8px; cursor: pointer; font-weight: bold; box-shadow: 0 5px 0 #5a3a1a; display: block; margin: 12px auto 0; }
+  #end-panel .big-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #5a3a1a; }
+
+  /* ===================== 右上角控制按钮（P0-4） ===================== */
+  #topbar .ctrl-bar { display: flex; align-items: center; gap: 6px; }
+  .ctrl-btn {
+    font-family: inherit; background: #F4EAD0; color: #2C1810;
+    border: 3px solid #5a3a1a; border-radius: 6px; padding: 3px 9px;
+    cursor: pointer; font-weight: bold; font-size: clamp(10px,1.4vw,14px);
+    box-shadow: 0 3px 0 #5a3a1a; transition: background 0.1s, transform 0.05s;
+  }
+  .ctrl-btn:hover { background: #ffe9b0; }
+  .ctrl-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #5a3a1a; }
+  .ctrl-btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: 0 3px 0 #5a3a1a; }
+  .ctrl-btn.flash { animation: cflash 0.4s; }
+  @keyframes cflash { 0%,100%{background:#F4EAD0} 50%{background:#e63946; color:#fff} }
+
+  /* ===================== 开局身份告知面板（P0-1） ===================== */
+  #identity-panel { background: rgba(13,10,5,0.82); z-index: 50; }
+  #identity-panel .id-card {
+    background: #fbf3df; color: #3a2410; border: 4px solid #8B6914; border-radius: 14px;
+    padding: 4% 5%; max-width: 620px; width: 92%; box-shadow: 0 8px 0 #5a3a1a; text-align: center;
+  }
+  #identity-panel .id-card h2 { color: #8a2b00; font-size: clamp(18px,3vw,30px); margin-bottom: 2%; text-shadow: 0 2px 0 #e8d39a; }
+  #identity-panel .id-avatar { width: 150px; height: 150px; object-fit: cover; object-position: center top; border-radius: 10px; border: 3px solid #8B6914; background: #FFF8E7; margin: 0 auto 3%; display: block; }
+  #identity-panel .id-name { font-size: clamp(15px,2.4vw,22px); font-weight: bold; margin-bottom: 1%; }
+  #identity-panel .id-role { font-size: clamp(14px,2.2vw,20px); color: #8a2b00; font-weight: bold; margin-bottom: 2%; }
+  #identity-panel .id-skill { font-size: clamp(12px,1.8vw,16px); line-height: 1.7; text-align: left; background: rgba(139,105,20,0.12); border-left: 4px solid #8B6914; padding: 2% 3%; border-radius: 8px; margin-bottom: 3%; }
+  #identity-panel .id-guide { font-size: clamp(11px,1.6vw,14px); color: #5a3a1a; margin-bottom: 3%; font-style: italic; border-top: 1px dashed #c9a85a; padding-top: 6px; line-height: 1.6; }
+  #identity-panel .big-btn { font-size: clamp(15px,2.4vw,22px); padding: 10px 28px; background: #ffd27a; color: #2C1810; border: 4px solid #5a3a1a; border-radius: 8px; cursor: pointer; font-weight: bold; box-shadow: 0 5px 0 #5a3a1a; }
+  #identity-panel .big-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #5a3a1a; }
+
+  /* ===================== 重开确认弹窗（P0-4） ===================== */
+  #confirm-modal { background: rgba(13,10,5,0.82); z-index: 60; }
+  #confirm-modal .cm-box { background: #fbf3df; color: #3a2410; border: 4px solid #8B6914; border-radius: 14px; padding: 4% 5%; max-width: 480px; width: 90%; text-align: center; box-shadow: 0 8px 0 #5a3a1a; }
+  #confirm-modal .cm-box p { font-size: clamp(13px,2vw,18px); line-height: 1.7; margin-bottom: 4%; }
+  #confirm-modal .cm-row { display: flex; gap: 14px; justify-content: center; }
+  #confirm-modal .cm-row .ctrl-btn { font-size: clamp(13px,1.8vw,16px); padding: 8px 20px; }
+
+  /* ===================== 右侧历史记录面板（可滚动，P0-5 修复） ===================== */
+  #log {
+    position: absolute; right: 0; top: 18.2%; bottom: 1.5%; width: var(--log-width);
+    z-index: 22; font-size: clamp(9px,1.25vw,12px); color: #F4EAD0;
+    background: rgba(13,10,5,0.62); border-left: 3px solid #5a3a1a;
+    padding: 6px 8px; line-height: 1.55; overflow-y: auto; overflow-x: hidden;
+    pointer-events: auto;   /* 可拖拽滚动（修复此前 pointer-events:none 卡死） */
+    scrollbar-width: thin; scrollbar-color: #8B6914 rgba(0,0,0,0.3);
+  }
+  #log .h-line { margin-bottom: 6px; padding-bottom: 5px; border-bottom: 1px dashed rgba(255,255,255,0.14); word-break: break-word; }
+  #log .h-line.h-event { color: #ffd27a; font-weight: bold; }
+  #log .h-line .h-name { color: #ffd27a; font-weight: bold; }
+  #log .h-line b { color: #ffd27a; }
+  #log::-webkit-scrollbar { width: 10px; }
+  #log::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); }
+  #log::-webkit-scrollbar-thumb { background: #8B6914; border-radius: 5px; border: 2px solid rgba(0,0,0,0.3); }
+
+  /* ===================== 选择题面板（金融决策） ===================== */
+  #choice-panel {
+    position: absolute; left:0; right:var(--log-width); top:18.2%; bottom:30%;
+    z-index: 27; display:none; flex-direction: column;
+    background: rgba(20,12,5,0.62); padding: 1% 2%;
+    align-items: center; justify-content: flex-start; gap: 0.6%;
+    overflow: auto;
+  }
+  #choice-panel.show { display: flex; }
+  #choice-panel .cp-title { color:#ffd27a; font-weight:bold; font-size: clamp(12px,1.9vw,18px); text-align:center; margin-bottom:0.4%; text-shadow:0 2px 4px #000; }
+  #choice-panel .cp-desc { color:#F4EAD0; font-size: clamp(11px,1.6vw,15px); margin-bottom:0.8%; text-align:center; max-width:94%; }
+  #choice-panel .cp-info { color:#ff5a5a; font-weight:bold; font-size: clamp(11px,1.6vw,15px); background:rgba(120,10,10,0.35); border:2px solid #ff5a5a; border-radius:8px; padding:6px 10px; margin-bottom:1%; text-align:center; max-width:94%; }
+  .choice-opt {
+    width: 94%; max-width: 780px; text-align:left;
+    background: rgba(244,234,208,0.96); color:#2C1810;
+    border:3px solid #5a3a1a; border-radius:8px; padding:7px 12px; margin:0.35% 0;
+    cursor:pointer; font-family:inherit; font-size: clamp(11px,1.6vw,15px); font-weight:bold;
+    box-shadow:0 3px 0 #3a2410; line-height:1.3;
+  }
+  .choice-opt:hover { background:#fff; transform: translateY(-2px); box-shadow:0 5px 0 #3a2410; }
+  .choice-opt.selected { background:#ffd27a; box-shadow:0 0 0 3px #ff9d2e, 0 3px 0 #3a2410; }
+  .choice-opt .opt-knowledge { display:block; font-size:0.82em; color:#8a2b00; margin-top:2px; font-weight:normal; }
+  .cp-submit { margin-top:0.8%; background:#ffd27a; color:#2C1810; border:4px solid #5a3a1a; border-radius:8px; padding:8px 24px; cursor:pointer; font-weight:bold; font-family:inherit; font-size: clamp(12px,1.8vw,17px); box-shadow:0 4px 0 #5a3a1a; }
+  .cp-submit:active { transform:translateY(2px); box-shadow:0 2px 0 #5a3a1a; }
+  .cp-result { color:#F4EAD0; font-size: clamp(12px,1.7vw,16px); line-height:1.6; text-align:left; max-width:780px; margin:0.8% 0; background:rgba(13,10,5,0.72); padding:2% 3%; border-radius:8px; border:2px solid #5a3a1a; }
+
+  /* ===================== 知识点卡片弹窗 ===================== */
+  #knowledge-panel { position:absolute; inset:0; z-index:45; display:none; align-items:center; justify-content:center; background:rgba(13,10,5,0.86); padding:4%; }
+  #knowledge-panel.show { display:flex; }
+  #knowledge-panel .k-card { background: rgba(244,234,208,0.98); border:4px solid #ffd27a; border-radius:12px; max-width:680px; width:92%; padding:3% 4%; color:#2C1810; box-shadow:0 8px 0 #3a2410; max-height:86%; overflow:auto; }
+  #knowledge-panel .k-card h2 { color:#8a2b00; font-size: clamp(15px,2.4vw,24px); margin-bottom:2%; }
+  #knowledge-panel .k-card .k-content { font-size: clamp(12px,1.8vw,17px); line-height:1.7; margin-bottom:2%; }
+  #knowledge-panel .k-card .k-theory { font-size: clamp(11px,1.5vw,15px); color:#5a3a1a; background:rgba(90,58,26,0.12); padding:2% 3%; border-radius:8px; border-left:4px solid #5a3a1a; }
+  #knowledge-panel .k-card .k-close { margin-top:3%; background:#ffd27a; color:#2C1810; border:3px solid #5a3a1a; border-radius:8px; padding:8px 22px; cursor:pointer; font-weight:bold; font-family:inherit; font-size: clamp(12px,1.8vw,16px); box-shadow:0 4px 0 #5a3a1a; }
+  #knowledge-panel .k-card .k-close:active { transform:translateY(2px); box-shadow:0 2px 0 #5a3a1a; }
+
+  /* ===================== 出局玩家观察者横幅（P0-1） ===================== */
+  #observer-banner {
+    position: absolute; left: 0; right: 0; top: 18.2%;
+    text-align: center; z-index: 28; display: none;
+    pointer-events: none;
+    font-size: clamp(13px, 2.1vw, 20px); font-weight: bold;
+    color: #fff; text-shadow: 0 2px 4px #000;
+    padding: 8px 6px; background: rgba(150,30,30,0.55);
+    border-bottom: 2px solid #e63946;
+  }
+  #observer-banner.show { display: block; }
+</style>
+</head>
+<body>
+<div id="game-root">
+
+  <!-- 场景背景 -->
+  <div id="scene"></div>
+
+  <!-- 顶部 HUD -->
+  <div id="topbar">
+    <div>
+      <span class="round-info" id="round-info">第 1 / 6 轮</span>
+      &nbsp;|&nbsp;
+      <span class="phase-info" id="phase-info">夜晚</span>
+    </div>
+    <div class="ctrl-bar">
+      <button class="ctrl-btn" id="btn-restart" onclick="confirmRestart()">重开</button>
+      <button class="ctrl-btn" id="btn-undo" onclick="undoMove()" disabled>撤销</button>
+      <button class="ctrl-btn" id="btn-menu" onclick="backToMenu()">主菜单</button>
+      <button class="pixel-btn" id="lang-btn" onclick="toggleLang()">EN / 中</button>
+    </div>
+  </div>
+
+  <!-- 财务状态栏（8 值） -->
+  <div id="statusbar"><!-- JS 注入 8 个 stat-cell --></div>
+
+  <!-- 中央舞台：桌游围桌（v1.0） -->
+  <div id="game-table">
+    <div id="stage"></div>
+  </div>
+
+  <!-- 投票提示 -->
+  <div id="vote-hint" style="display:none;"></div>
+
+  <!-- 投票面板 -->
+  <div id="vote-panel">
+    <div class="vp-tip" id="vp-tip"></div>
+  </div>
+
+  <!-- 事件日志 -->
+  <div id="log"></div>
+
+  <!-- 选择题面板（金融决策） -->
+  <div id="choice-panel"></div>
+
+  <!-- 知识点卡片弹窗 -->
+  <div id="knowledge-panel"></div>
+
+  <!-- 出局观察者横幅（P0-1：玩家出局后显示） -->
+  <div id="observer-banner"></div>
+
+  <!-- 对话框 -->
+  <div id="dialog" onclick="advanceDialog()">
+    <div class="d-portrait" id="d-portrait"><img id="d-pimg" alt=""></div>
+    <div class="d-body">
+      <div class="d-name" id="d-name">　</div>
+      <div class="d-text" id="d-text"></div>
+    </div>
+    <div class="d-next" id="d-next">▼ 继续</div>
+  </div>
+
+  <!-- 起始遮罩 -->
+  <!-- 起始遮罩（v0.5.3 P0-3：先选语言的主菜单） -->
+  <div class="overlay" id="start-panel">
+    <h1 id="start-title">金融狼人杀</h1>
+    <p id="start-desc">
+      你是一名大学生，身处校园金融风暴之中。<br>
+      9 人局：3 狼 / 3 神 / 3 民。白天讨论投票找出狼人，夜晚狼人秘密行动。<br>
+      6 轮决策，迎来你的最终结局。
+    </p>
+    <div class="start-lang-pick" id="start-lang-pick">
+      <button class="big-btn lang-start" id="start-zh" onclick="startGame('zh')">中文开始</button>
+      <button class="big-btn lang-start" id="start-en" onclick="startGame('en')">Start in English</button>
+    </div>
+  </div>
+
+  <!-- 结束遮罩 -->
+  <div class="overlay hidden" id="end-panel">
+    <div class="box">
+      <h1 id="end-title">游戏结束</h1>
+      <div class="result-detail" id="end-detail"></div>
+      <br>
+      <button class="big-btn" id="restart-btn" onclick="location.reload()">再来一局</button>
+    </div>
+  </div>
+
+  <!-- 开局身份告知遮罩（P0-1） -->
+  <div class="overlay hidden" id="identity-panel">
+    <div class="id-card">
+      <h2 id="id-title">你的身份</h2>
+      <img class="id-avatar" id="id-avatar" alt="">
+      <div class="id-name" id="id-name"></div>
+      <div class="id-role" id="id-role"></div>
+      <div class="id-guide" id="id-guide"></div>
+      <div class="id-skill" id="id-skill"></div>
+      <button class="big-btn" id="id-start" onclick="beginAfterIdentity()">开始游戏</button>
+    </div>
+  </div>
+
+  <!-- 重开确认弹窗（P0-4） -->
+  <div class="overlay hidden" id="confirm-modal">
+    <div class="cm-box">
+      <p id="cm-text">确定要重新开始吗？当前进度将丢失</p>
+      <div class="cm-row">
+        <button class="ctrl-btn" id="cm-yes" onclick="doRestart()">确定</button>
+        <button class="ctrl-btn" id="cm-no" onclick="closeConfirm()">取消</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- A2 真实数据接入（v0.5）：相对路径引用 game_data/ 下的副本，源文件不得修改 -->
+<script src="game_data/npc_dialogues.js"></script>
+<script src="game_data/rounds_data.js"></script>
+<script src="game_data/knowledge_cards.js"></script>
+<script src="game_data/endings_data.js"></script>
+<!-- v0.5.2 P0-1：玩家身份告知数据源（A2 交付，只读接入，不得修改源） -->
+<script src="game_data/role_info.js"></script>
+
+<script>
+/* ===========================================================================
+ *  FLIA-werewolf v0.5 — 核心循环 + A2 数据接入
+ *  技术栈：纯原生 JS，无外部依赖；素材本地相对路径。
+ * =========================================================================== */
+
+/* ---------- 0. 配置与 i18n 骨架（P2 将扩展为完整双语） ---------- */
+// 素材根目录：本文件位于 05_开发记录_dev/B3_游戏开发/，距项目根两级 → ../../
+const ASSET_BASE = './assets/';
+let LANG = 'zh'; // 'zh' | 'en'
+
+const I18N = {
+  zh: {
+    round: '第', roundOf: '轮', phaseNight: '夜晚', phaseDay: '白天·讨论', phaseVote: '投票', phaseSettle: '结算',
+    startTitle: '金融狼人杀', voteHint: '点击一名玩家，投出你怀疑的人',
+    vpTip: '请选择你要投票出局的人（点击头像）',
+    winGood: '好人胜利', winWolf: '狼人胜利',
+    goodWinDesc: '你与伙伴们成功揪出了所有狼人，守住了校园的金融安全！',
+    wolfWinDesc: '狼人屠边成功，校园陷入金融恐慌……',
+    revealWolf: '狼人', revealGod: '神民', revealVillager: '村民',
+    eliminated: '被投票出局', killed: '在夜晚被狼人带走',
+    tie: '平票，本轮无人出局', livingInfo: '存活',
+    witchSave: '女巫使用解药救下了', witchPoison: '女巫在夜里毒杀了', hunterShot: '猎人开枪带走了',
+    pkIntro: '出现平票！进入 PK 加时投票', pkTie: 'PK 再次平票，本轮无人出局',
+    lastWords: '遗言', bankruptTitle: '破产出局', bankruptDesc: '你的负债压垮了财务，校园金融风暴将你吞没……',
+    dayBegin: '白天到了，大家聚在一起，讨论谁可能是狼人，也面对各自的财务抉择。',
+    scenePrefix: '【场景】',
+    choiceTitle: '做出你的选择', multiChoiceTitle: '识别诈骗信息（可多选）', submitBtn: '提交答案', continueBtn: '继续 ▶',
+    knowledgeTitle: '知识点', knowledgeClose: '明白了',
+    consequenceLabel: '结果', subEventLabel: '支线事件', gradeTitle: '毕业财务体检',
+    netWorth: '净资产', literacyScore: '财商分数', healthLabel: '财务健康度', gradeLabel: '评级',
+    finalEnding: '最终结局', reflectionLabel: '思考题', achievementLabel: '成就解锁',
+    linkedKnowledge: '关联知识点', narrator: '主持人',
+    ctrlRestart: '重开', ctrlUndo: '撤销', ctrlMenu: '主菜单',
+    idTitle: '你的身份', idSkillLabel: '技能',
+    cmText: '确定要重新开始吗？当前进度将丢失', cmConfirm: '确定', cmCancel: '取消',
+    next: '▼ 继续', undoEmpty: '暂无可撤销的步骤', hostName: '主持人',
+    // v0.5.3：开始菜单 + 夜间行动 UI（玩家持有神/狼身份）
+    startPickLang: '请选择语言，开始游戏',
+    nightWolfTitle: '🔪 狼人行动', nightWolfDesc: '选择今晚要击杀的目标（不能刀自己阵营）',
+    nightSeerTitle: '🔮 预言家行动', nightSeerDesc: '查验一名玩家的真实身份',
+    nightWitchTitle: '🧪 女巫行动', nightWitchDesc: '解药与毒药各限一次，谨慎使用',
+    nightSkip: '不使用，结束夜晚',
+    nightSaveBtn: '使用解药救人', nightPoisonOpen: '使用毒药',
+    nightConfirm: '确认', nightRound1NoKill: '首夜：狼人选择按兵不动',
+    hunterGunTitle: '🏹 猎人开枪', hunterGunDesc: '你出局了！作为猎人，你可以开枪带走一名玩家',
+    hunterGunSkip: '放弃开枪',
+  },
+  en: {
+    round: 'Round', roundOf: '/6', phaseNight: 'Night', phaseDay: 'Day·Talk', phaseVote: 'Vote', phaseSettle: 'Settle',
+    startTitle: 'Financial Werewolf', voteHint: 'Click a player you suspect',
+    vpTip: 'Choose who to eliminate (click avatar)',
+    winGood: 'Villagers Win', winWolf: 'Wolves Win',
+    goodWinDesc: 'You and your friends exposed every wolf and protected campus finance!',
+    wolfWinDesc: 'The wolves wiped out a side. Campus falls into financial panic…',
+    revealWolf: 'Wolf', revealGod: 'God', revealVillager: 'Villager',
+    eliminated: 'voted out', killed: 'killed by wolves at night',
+    tie: 'Tie — no one eliminated', livingInfo: 'Alive',
+    witchSave: 'The Witch saved', witchPoison: 'The Witch poisoned', hunterShot: 'The Hunter shot',
+    pkIntro: 'Tie vote! PK runoff begins', pkTie: 'PK tie again — no one eliminated',
+    lastWords: 'Last words', bankruptTitle: 'Bankrupt', bankruptDesc: 'Your liabilities crushed you. The financial storm swallowed you…',
+    dayBegin: 'Daytime. Everyone gathers to discuss who might be a wolf — and faces their own financial choices.',
+    scenePrefix: '[Scene] ',
+    choiceTitle: 'Make your choice', multiChoiceTitle: 'Spot scams (multi-select)', submitBtn: 'Submit', continueBtn: 'Continue ▶',
+    knowledgeTitle: 'Knowledge', knowledgeClose: 'Got it',
+    consequenceLabel: 'Outcome', subEventLabel: 'Side Event', gradeTitle: 'Graduation Financial Checkup',
+    netWorth: 'Net Worth', literacyScore: 'Fin-Lit', healthLabel: 'Health', gradeLabel: 'Grade',
+    finalEnding: 'Final Ending', reflectionLabel: 'Reflection', achievementLabel: 'Achievement Unlocked',
+    linkedKnowledge: 'linked knowledge', narrator: 'Narrator',
+    ctrlRestart: 'Restart', ctrlUndo: 'Undo', ctrlMenu: 'Menu',
+    idTitle: 'Your Identity', idSkillLabel: 'Skill',
+    cmText: 'Restart this game? Current progress will be lost.', cmConfirm: 'Confirm', cmCancel: 'Cancel',
+    next: '▼ Continue', undoEmpty: 'Nothing to undo', hostName: 'Host',
+    // v0.5.3: start menu + night-action UI (player holds god/wolf role)
+    startPickLang: 'Choose a language to begin',
+    nightWolfTitle: '🔪 Wolf Action', nightWolfDesc: 'Choose tonight’s kill target (not your own faction)',
+    nightSeerTitle: '🔮 Seer Action', nightSeerDesc: 'Check a player’s true identity',
+    nightWitchTitle: '🧪 Witch Action', nightWitchDesc: 'Antidote & poison — one each, use wisely',
+    nightSkip: 'Skip — end the night',
+    nightSaveBtn: 'Use Antidote', nightPoisonOpen: 'Use Poison',
+    nightConfirm: 'Confirm', nightRound1NoKill: 'Night 1: the wolves hold their fire',
+    hunterGunTitle: '🏹 Hunter’s Gun', hunterGunDesc: 'You are out! As the Hunter, shoot one player',
+    hunterGunSkip: 'Hold fire',
+  }
+};
+function t(key){ return (I18N[LANG] && I18N[LANG][key] !== undefined) ? I18N[LANG][key] : (I18N.zh[key] || key); }
+
+/* ---------- 1. 角色池（标准版 9 人，与素材一一对应） ---------- */
+// 头像 / 全身像文件名与素材目录 characters 子目录完全一致
+const CHARACTERS = [
+  { id:1, name:'陈浩宇', tag:'大三学长',   portrait:'portrait_senior_bro.png',   full:'fullbody_senior_bro.png' },
+  { id:2, name:'林梦琪', tag:'大四学姐',   portrait:'portrait_senior_sis.png',   full:'fullbody_senior_sis.png' },
+  { id:3, name:'赵大勇', tag:'健身房教练', portrait:'portrait_fitness_coach.png', full:'fullbody_fitness_coach.png' },
+  { id:4, name:'王思敏', tag:'金融社团社长', portrait:'portrait_nerd.png',         full:'fullbody_nerd.png' },
+  { id:5, name:'张小雅', tag:'医学生',     portrait:'portrait_med_student.png',   full:'fullbody_med_student.png' },
+  { id:6, name:'李浩然', tag:'校报记者',   portrait:'portrait_reporter.png',      full:'fullbody_reporter.png' },
+  { id:7, name:'陈小明', tag:'大一新生',   portrait:'portrait_freshman.png',      full:'fullbody_freshman.png' },
+  { id:8, name:'王阿姨', tag:'小明妈妈',   portrait:'portrait_aunt_wang.png',     full:'fullbody_aunt_wang.png' },
+  { id:9, name:'周健',   tag:'大三学生',   portrait:'portrait_aggressive.png',   full:'fullbody_aggressive.png' },
+];
+
+// 投票 / 技能平衡参数（P0 无真实线索，用"镇民共识"模型模拟朴素讨论）。
+// townCorrect：每轮讨论指向真狼的概率；townFollow：好村民主跟随共识的概率。
+// seerWolfBias：预言家偏向查狼的概率；witchSave/witchPoison：女巫用药概率；hunterAcc：猎人命中已知狼概率。
+// 以下均为 [PLACEHOLDER]，待 P1/P2 由剧本线索与玩家推理接管后重新标定。
+// 投票 / 技能平衡参数（v0.5）：重标定以让 6 轮可达，避免屠边过快一边倒 [PLACEHOLDER]
+// townCorrect：讨论指向真狼概率；townFollow：好人跟随共识概率；seerWolfBias：预言家查狼概率；
+// witchSave/witchPoison：女巫用药概率；hunterAcc：猎人命中已知狼概率。
+// 优化6：平衡性调参（v0.7）。目标：好人胜≥30% / 狼人胜≤50% / 中性破产≈10-20%。
+// townCorrect：讨论指向真狼概率↑；townFollow：好人民主跟随共识↑；seerWolfBias：预言家查狼↑；
+// witchSave：女巫优先救↑；witchPoison：女巫毒药略↑；hunterAcc：猎人带狼↑。每局实测微调。
+// v0.8 平衡再标定：P0-3（狼人玩家首夜亦可出刀）+ P1-5（PK 候选弃权，非候选多数决）使狼人胜率上行。
+// 为守住「狼人≤50%」且给足余量：townFollow/townCorrect 上调(0.55→0.66 / 0.50→0.56) 强化镇民共识跟票，6 轮内集中票出真狼；
+// seerWolfBias 维持 v0.7 基线 0.52（避免狼人被过早找齐导致对局过短）。
+// 注：破产率（随机自动对局下≈5-7%）与本组投票类参数弱相关，见 v0.8 修复说明「平衡性」一节。
+var BAL = { townCorrect: 0.56, townFollow: 0.66, seerWolfBias: 0.52,
+            witchSave: 0.62, witchPoison: 0.15, hunterAcc: 0.55 };
+// 破产阈值（隐藏键 liability 参与判定）：coins<0 且 liability>阈值 触发 [PLACEHOLDER]
+// v0.7 优化6：阈值 5000→2500，使随机决策下破产可达 ~8%。
+// v0.8：P0-3+P1-5 使对局整体变短，随机决策下破产率回落至 ~6%；为守住「破产≈10-20%」目标，阈值 2500→1800（仍要求真实负债累积，非轻易触发）。
+var BANKRUPT = { coinsBelow: 0, liabilityAbove: 1800 };
+
+// Bug3：知识点主题分类（B3 侧映射，不改动 A2 数据文件）。18 张卡归入 6 主题（储蓄/投资/债务/规划/反诈/综合）。
+const KTHEME = {
+  k_budget_503020:'saving', k_saving_overfrugal:'saving', k_inflation:'saving', k_emergency_fund:'saving',
+  k_compound:'invest', k_risk_return:'invest',
+  k_credit_card_apr:'debt', k_hidden_fee_installment:'debt', k_predatory_lending:'debt', k_systemic_risk_joint_liability:'debt',
+  k_impulse_consumption:'plan', k_knowledge_paywall:'plan',
+  k_no_free_lunch:'scam', k_too_good_true:'scam', k_scam_types:'scam',
+  k_emergency_fund_insurance:'general', k_insurance_value:'general', k_whistleblowing:'general'
+};
+// 每局 Fisher-Yates 洗牌：打乱 18 张卡顺序，保证「每局题目序列不同」，防玩家背答案。
+function initKnowledgeShuffle(){
+  const keys = (typeof knowledgeCards !== 'undefined') ? Object.keys(knowledgeCards) : [];
+  G.kShuffle = shuffle(keys.slice());
+  G.kUsed = {};   // 每主题已抽取集合，避免同局内立即重复
+}
+
+// 神民类型 / 狼人类型（揭示时展示，P2 将接入对应技能）
+const GOD_TYPES = ['seer','witch','hunter'];      // 预言家 / 女巫 / 猎人
+const WOLF_TYPES = ['loan_broker','scam_sidekick','debt_collector']; // 贷款中介 / 诈骗托 / 催收者
+const GOD_LABEL = { zh:{seer:'预言家',witch:'女巫',hunter:'猎人'}, en:{seer:'Seer',witch:'Witch',hunter:'Hunter'} };
+const WOLF_LABEL = { zh:{loan_broker:'贷款中介',scam_sidekick:'诈骗托',debt_collector:'催收者'},
+                     en:{loan_broker:'Loan Broker',scam_sidekick:'Scam Sidekick',debt_collector:'Debt Collector'} };
+
+/* v0.5：A2 真实数据接入 —— NPC 全状态台词查表（按 id 索引，双语） */
+const NPC_BY_ID = (typeof npcDialogues !== 'undefined') ? (function(){ const m={}; (npcDialogues||[]).forEach(n=>{ m[n.id]=n; }); return m; })() : {};
+// 双语姓名映射（NPC 名 + 角色标签），用于状态栏/头像，无硬编码中文
+const NAME_MAP = (function(){ const m={}; (npcDialogues||[]).forEach(n=>{ m[n.id]={ zh:n.name.zh, en:n.name.en, tag_zh:n.role.zh, tag_en:n.role.en }; }); return m; })();
+function npcName(id){ const m=NAME_MAP[id]; return m ? (LANG==='en'? m.en : m.zh) : (id+''); }
+function npcTag(id){ const m=NAME_MAP[id]; return m ? (LANG==='en'? m.tag_en : m.tag_zh) : ''; }
+// 双语文本助手：所有正文走 TXT(zh,en)，切换语言即时生效（不再硬编码单一语言串）
+function TXT(zh,en){ return (LANG==='en') ? en : zh; }
+// 货币格式化：英文下显示 $ 而非 ¥
+function money(n){ return (LANG==='en' ? '$' : '¥') + Math.round(n); }
+
+/* ---------- 0.4b v0.5.3 双语文本助手（支持 {zh,en} 对象，供历史记录与夜间 UI） ---------- */
+// B(zh,en)：构造双语文本对象
+function B(zh,en){ return { zh, en }; }
+// txtB：按当前语言取双语对象文本；字符串原样返回（并替换金融数值占位符）
+function txtB(b){ if(!b) return ''; if(typeof b==='string') return substVars(b); return substVars(LANG==='en' ? (b.en||'') : (b.zh||'')); }
+// tB：按 key 取双语对象（跳过当前语言解析，保证两个语言都正确）
+function tB(key){ const z=(I18N.zh&&I18N.zh[key]!==undefined)?I18N.zh[key]:key; const e=(I18N.en&&I18N.en[key]!==undefined)?I18N.en[key]:key; return { zh:z, en:e }; }
+// 规整任意输入为双语对象
+function normB(v){ if(v==null) return {zh:'',en:''}; if(typeof v==='object' && (('zh' in v)||('en' in v))) return {zh:v.zh||'', en:v.en||''}; return {zh:v, en:v}; }
+// v0.8 P1-4：金融数值动态化——对话/历史文本中的 {coins}/{savings}/{liability}/{credit} 等占位符，
+// 按当前 G.playerStatus 实时替换（money 格式化钱币类），杜绝主持人/台词硬编码数值。
+function substVars(s){
+  if(typeof s !== 'string') return s;
+  if(!G || !G.playerStatus) return s;
+  return s.replace(/\{\s*(\w+)\s*\}/g, function(m, k){
+    if(Object.prototype.hasOwnProperty.call(G.playerStatus, k)){
+      const v = G.playerStatus[k];
+      if(k==='coins' || k==='savings' || k==='liability') return money(v);
+      return '' + Math.round(v);
+    }
+    return m; // 未知占位符保留原样
+  });
+}
+// npcNameB：NPC 双语姓名
+function npcNameB(id){ const m=NAME_MAP[id]; return m ? { zh:m.zh, en:m.en } : { zh:''+id, en:''+id }; }
+
+/* ---------- 0.5 v0.5.2 通用小工具 ---------- */
+// 席位标签（英文不加「号」）
+function seatLabel(id){ return id + (LANG==='en' ? '' : '号'); }
+
+// 主持人 / 未知客串 占位图标（内联 SVG，避免空白头像，P0-3）
+const SVG_MIC = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' fill='%23FFF8E7'/><g fill='%238B6914'><rect x='24' y='12' width='16' height='30' rx='8'/><rect x='20' y='42' width='24' height='6' rx='3'/><rect x='30' y='48' width='4' height='10'/></g></svg>";
+const SVG_PERSON = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' fill='%23FFF8E7'/><g fill='%238B6914'><circle cx='32' cy='22' r='12'/><rect x='16' y='38' width='32' height='22' rx='10'/></g></svg>";
+
+// v0.5.3 P1-1：主持人头像（黄色法官精灵）。优先显示真实头像；加载失败时回退到 mic 图标。
+const HOST_PORTRAIT = 'characters/portrait_host.png';
+function setHostPortrait(imgEl){
+  if(!imgEl) return;
+  imgEl.onerror = function(){ imgEl.onerror = null; imgEl.src = SVG_MIC; };
+  imgEl.src = asset(HOST_PORTRAIT);
+}
+
+// 非名单客串发言者映射表（v0.6：清空气态表，移除硬编码 id=10 字面量）。
+// 若运行时出现任何非 1-9 号发言者，renderDialogItem 会安全回退 SVG_PERSON 占位头像 + 使用剧本自带
+// name，杜绝 undefined / 空白头像。此兜底保留作保险：B3 game_data/rounds_data.js 已重同步为 A2 清理版
+// （R1 speaker:9 周健），当前数据层 0 残留；本分支正常不再触发。
+const GUEST_SPEAKERS = {};
+
+// 当前发言者高亮（P1-2 金色光晕）
+function markSpeaking(id){
+  document.querySelectorAll('#stage .seat').forEach(el=>{ el.classList.remove('speaking'); el.classList.remove('night-focus'); });
+  if(id == null) return;
+  const seat = document.querySelector('#stage .seat[data-id="'+id+'"]');
+  if(seat){ seat.classList.add('speaking'); seat.classList.add('night-focus'); }
+}
+
+// d-next 标签（P0-2：运行时 EN 文案）
+function updateNextLabel(){ const el=document.getElementById('d-next'); if(el) el.textContent = t('next'); }
+
+// 控制按钮 / 弹窗 双语标签（P0-4）
+function updateCtrlLabels(){
+  const set=(id,txt)=>{ const e=document.getElementById(id); if(e) e.textContent=txt; };
+  set('btn-restart', t('ctrlRestart')); set('btn-undo', t('ctrlUndo')); set('btn-menu', t('ctrlMenu'));
+  set('cm-text', t('cmText')); set('cm-yes', t('cmConfirm')); set('cm-no', t('cmCancel'));
+  set('id-title', t('idTitle')); set('id-start', (LANG==='en'?'Start Game':'开始游戏'));
+  set('restart-btn', (LANG==='en'?'Play Again':'再来一局'));
+}
+
+/* ---------- 0.6 右侧历史记录（P0-5） ---------- */
+// 自动滚底：用户上滑查看历史时不强制滚动
+let historyAtBottom = true;
+function initHistoryScroll(){
+  const h=document.getElementById('log'); if(!h) return;
+  h.addEventListener('scroll', ()=>{
+    historyAtBottom = (h.scrollHeight - h.scrollTop - h.clientHeight) < 40;
+  });
+}
+/* ---------- 0.6b v0.5.3 双语历史记录 ----------
+ * 每条历史消息存储 {name:{zh,en}, text:{zh,en}, cls, bold}，切换语言时整面板重渲染，杜绝中英混合。 */
+function historyAppend(entry){
+  if(!G) return;                       // 游戏未开始时不记录
+  if(!G.history) G.history = [];
+  G.history.push(entry);
+  renderHistoryLine(entry, true);
+}
+// 重渲染单条（appendOnly=true 表示仅追加最新一条，避免整面板重排）
+function renderHistoryLine(e, appendOnly){
+  const h=document.getElementById('log'); if(!h) return;
+  const el=document.createElement('div');
+  if(e.raw !== undefined){
+    el.className='h-line'+(e.cls?(' '+e.cls):''); el.innerHTML=e.raw;
+  } else {
+    const nm = e.name ? txtB(e.name) : '';
+    const tx = e.text ? txtB(e.text) : '';
+    el.className='h-line'+(e.cls?(' '+e.cls):'');
+    el.innerHTML = (nm ? '<span class="h-name">'+escapeHtml(nm)+'：</span>' : '') + (e.bold ? '<b>'+escapeHtml(tx)+'</b>' : escapeHtml(tx));
+  }
+  if(appendOnly){ h.appendChild(el); if(historyAtBottom) h.scrollTop = h.scrollHeight; }
+  else h.appendChild(el);
+}
+// 整面板重渲染（语言切换时调用）
+function renderHistory(){
+  const h=document.getElementById('log'); if(!h) return;
+  h.innerHTML='';
+  if(!G || !G.history) return;
+  G.history.forEach(e=> renderHistoryLine(e, false));
+  if(historyAtBottom) h.scrollTop = h.scrollHeight;
+}
+// 事件日志（双语）：text 为 {zh,en} 对象或字符串；opts={cls,bold}
+function logB(textB, opts){
+  opts = opts || {};
+  const text = (typeof textB==='string') ? { zh:textB, en:textB } : normB(textB);
+  historyAppend({ text, cls:opts.cls, bold:opts.bold });
+}
+
+/* ---------- 0.7 撤销栈（P0-4，仅覆盖 选择 / 投票 / PK 决策） ---------- */
+let undoStack = [];
+function cloneSafe(v){ try { return structuredClone(v); } catch(e){ return JSON.parse(JSON.stringify(v)); } }
+function sanitizeState(g){
+  const keys=['seats','round','maxRound','phase','playerId','playerDead','playerStatus','nightKillId','nightSavedId','nightPoisonId','voteOutId','knownWolves','lastSeerCheck','witchAntidote','witchPoison','result','pkTied','flags','marks','reportCount','playerVoteWeight','dominoChainActive','roundData','dialogQueue'];
+  const o={}; keys.forEach(k=>{ if(g[k]!==undefined) o[k]=cloneSafe(g[k]); }); return o;
+}
+function pushUndo(reenter){
+  undoStack.push({ snap: sanitizeState(G), reenter });
+  const ub=document.getElementById('btn-undo'); if(ub) ub.disabled=false;
+}
+function restoreUndo(){
+  if(undoStack.length===0) return null;
+  const e=undoStack.pop();
+  Object.keys(e.snap).forEach(k=>{ if(e.snap[k]!==undefined) G[k]=e.snap[k]; });
+  const ub=document.getElementById('btn-undo'); if(ub) ub.disabled=(undoStack.length===0);
+  return e.reenter;
+}
+function undoMove(){
+  if(undoStack.length===0){
+    const ub=document.getElementById('btn-undo');
+    if(ub){ ub.classList.remove('flash'); void ub.offsetWidth; ub.classList.add('flash'); }
+    return;
+  }
+  const reenter=restoreUndo();
+  // 清空当前对话框与提示，回到决策界面
+  G.dialogQueue=[]; G.pendingAfterDialog=null; G._curDialogItem=null;
+  document.getElementById('d-text').textContent=''; document.getElementById('d-name').textContent='　';
+  markSpeaking(null);
+  renderTopbar(); renderStatusbar(); renderStage();
+  if(!reenter) return;
+  if(reenter.type==='choice') presentChoice(reenter.choices, reenter.opts, true);
+  else if(reenter.type==='vote') enterVote(true);
+  else if(reenter.type==='pk') enterPK(reenter.tiedIds, true);
+}
+
+/* ---------- 0.8 重开 / 主菜单 / 确认弹窗（P0-4） ---------- */
+function confirmRestart(){ document.getElementById('confirm-modal').classList.remove('hidden'); }
+function closeConfirm(){ document.getElementById('confirm-modal').classList.add('hidden'); }
+function doRestart(){
+  closeConfirm();
+  undoStack=[]; const ub=document.getElementById('btn-undo'); if(ub) ub.disabled=true;
+  startGame();
+}
+function backToMenu(){
+  undoStack=[]; const ub=document.getElementById('btn-undo'); if(ub) ub.disabled=true;
+  ['identity-panel','confirm-modal','end-panel','vote-panel','choice-panel','knowledge-panel'].forEach(id=>{
+    const e=document.getElementById(id); if(e) e.classList.add('hidden');
+  });
+  document.getElementById('start-panel').classList.remove('hidden');
+  const h=document.getElementById('log'); if(h) h.innerHTML='';
+  document.getElementById('stage').innerHTML='';
+  document.getElementById('d-text').textContent=''; document.getElementById('d-name').textContent='　';
+  document.getElementById('d-pimg').src='';
+}
+
+/* ---------- 0.9 开局身份告知（P0-1，数据源自 role_info.js） ---------- */
+function playerRoleKey(){
+  const p=G.seats.find(s=>s.isPlayer); if(!p) return 'villager';
+  if(p.faction==='wolf') return 'werewolf';
+  if(p.faction==='god') return p.type; // seer / witch / hunter
+  return 'villager';
+}
+function showIdentityPanel(){
+  const key=playerRoleKey();
+  // 注意：role_info.js 为经典脚本，其顶层 const roleInfo 不会挂到 window 上，
+  // 故用 typeof 直接判定全局词法绑定，避免 window.roleInfo 恒为 undefined 导致身份永远显示「村民」。
+  const role=(typeof roleInfo !== 'undefined' && roleInfo.roles && roleInfo.roles[key]) ? roleInfo.roles[key] : null;
+  const p=G.seats.find(s=>s.isPlayer);
+  const nm=NAME_MAP[p.char.id] || { zh:p.char.name, en:p.char.name };
+  const zRole=role?role.name.zh:'村民', eRole=role?role.name.en:'Villager';
+  const zSkill=role?role.skill.zh:'', eSkill=role?role.skill.en:'';
+  const zName=nm.zh, eName=nm.en;
+  // 用 role_info.openingTemplate 占位符填充「引导语」（同样用 typeof 防御，避免数据缺失时崩溃）
+  const ot=(typeof roleInfo !== 'undefined' && roleInfo.openingTemplate) ? roleInfo.openingTemplate : { zh:'', en:'' };
+  const guideZh=ot.zh.replace('{编号}',p.char.id).replace('{名字}',zName).replace('{身份}',zRole).replace('{技能描述}',zSkill);
+  const guideEn=ot.en.replace('{number}',p.char.id).replace('{name}',eName).replace('{role}',eRole).replace('{skill_description}',eSkill);
+  document.getElementById('id-avatar').src=asset('characters/'+p.char.portrait);
+  document.getElementById('id-name').textContent = (LANG==='en'? ('You are Player '+p.char.id+' '+eName) : ('你是 '+p.char.id+'号 '+zName));
+  document.getElementById('id-role').textContent = (LANG==='en'? ('Role: '+eRole) : ('身份：'+zRole));
+  document.getElementById('id-guide').textContent = (LANG==='en'? guideEn : guideZh);
+  document.getElementById('id-skill').textContent = (LANG==='en'? ('Skill: '+eSkill) : ('技能：'+zSkill));
+  document.getElementById('id-title').textContent = t('idTitle');
+  document.getElementById('id-start').textContent = (LANG==='en'?'Start Game':'开始游戏');
+  document.getElementById('identity-panel').classList.remove('hidden');
+}
+function beginAfterIdentity(){
+  document.getElementById('identity-panel').classList.add('hidden');
+  beginRound();
+}
+
+/* ---------- 2. 状态栏 8 个财务值 ---------- */
+// 键名与顺序：coins/savings/energy/credit/social/academics/financial literacy/survival
+const STATUS_KEYS = [
+  { key:'coins',     zh:'金币', en:'Coins',   icon:'💰', max:10000 },
+  { key:'savings',   zh:'储蓄', en:'Save',    icon:'🏦', max:10000 },
+  { key:'energy',    zh:'精力', en:'Energy',  icon:'⚡', max:100 },
+  { key:'credit',    zh:'信用', en:'Credit',  icon:'💳', max:100 },
+  { key:'social',    zh:'社交', en:'Social',  icon:'👥', max:100 },
+  { key:'academics', zh:'学业', en:'Study',   icon:'📚', max:100 },
+  { key:'literacy',  zh:'财商', en:'Fin-Lit', icon:'🧠', max:100 },
+  { key:'survival',  zh:'生存', en:'Survive', icon:'❤️', max:100 },
+];
+
+/* ---------- 3. 全局游戏状态 ---------- */
+let G = null; // 当前局状态对象
+
+function newGameState(){
+  const hostSeat = {
+    isHost: true,
+    isPlayer: false,
+    alive: true,
+    faction: 'host',
+    type: 'host',
+    char: { id: 0, portrait: 'portrait_host.png' }
+  };
+  return {
+    seats: [],          // 9 个席位 {char, faction, type, alive, isPlayer}
+    round: 1,
+    maxRound: 6,
+    phase: '',          // 'NIGHT' | 'DAY' | 'VOTE' | 'SETTLE'
+    playerId: 7,        // v0.7：默认占位；startGame 中每局随机 1-9（优化5：玩家角色随机化）
+    playerDead: false,
+    goodWon: false,           // 本局胜负：true=好人阵营胜利 / false=狼人阵营胜利（屠边），供结局与结局面板判定
+    playerDeathCause: null,   // 玩家出局原因（'wolf' | 'vote' | 'poison' | 'hunter'），猎人被毒死不可开枪判定用
+    hunterGunUsed: false,     // v0.6：玩家猎人是否已开枪（仅开局置 false；局内绝不复位，防止死亡结算重复触发）
+    history: [],            // 双语历史记录：[{name:{zh,en}, text:{zh,en}, cls, bold}]
+    // 8 显示键 + 1 隐藏键 liability（破产判定用，不显示在 UI）
+    playerStatus: { coins:2000, savings:0, energy:100, credit:100, social:50, academics:60, literacy:30, survival:100, liability:0 },
+    pendingAfterDialog: null, // 对话播完后的回调
+    dialogQueue: [],
+    nightKillId: null,
+    nightSavedId: null,       // 女巫本夜救下的编号
+    nightPoisonId: null,      // 女巫本夜毒杀的编号
+    voteOutId: null,
+    knownWolves: [],          // 预言家已查验并确认为狼人的编号（P0 临时线索；P2 接入完整技能）
+    lastSeerCheck: null,      // 上一夜预言家查验记录
+    witchAntidote: true,      // 女巫解药（每局一次）
+    witchPoison: true,        // 女巫毒药（每局一次）
+    result: null,             // 结局 id（7 结局之一 / bankrupt）
+    pkTied: null,             // PK 加时：被平票锁定的编号数组（null 表示非 PK）
+    _cells: {},               // 状态栏单元格引用（浮动动画定位用）
+    _onPick: (targetId)=>{    // 默认投票回调（验收/测试兜底）；正式投票阶段会被 enterVote 覆盖
+      const t = seatById(targetId);
+      if(t) t.voteCount = (t.voteCount||0) + 1;
+    },
+    // v0.5 标记 / 结局判定状态
+    flags: { collude:false, justice:false, dominoRisk:false, moralHazard:false, priorityKill:false, exposed:false, stayedSafe:false },
+    marks: [],                // [{by, round, deep}] 狼人标记：round 轮起对玩家"特别关照"
+    reportCount: 0,           // 举报/揭穿次数（k_whistleblowing 非 C 选项）
+    playerVoteWeight: 1,      // v1.0：保留字段仅为兼容旧存档，实际计票固定 1 票
+    dominoChainActive: false, // 多米诺连锁是否成立
+    roundData: null,          // 当前轮 roundsData 引用
+    _curChoices: null,        // 当前选择题选项（测试/点击两用）
+    _choice: null,            // 当前选择题交互状态 {pick, submit, cont}
+    _curDialogItem: null,     // 当前对话框条目（语言切换时重渲染）
+    _nightButtons: null,      // 玩家夜间行动 UI 按钮（测试/点击两用），v0.6 补全初始化避免 undefined
+    _nightRebuild: null,      // 玩家夜间行动 UI 重建函数（语言切换重渲染用）
+    kShuffle: null,           // Bug3：每局知识点卡 Fisher-Yates 洗牌序列
+    kUsed: {},                // Bug3：每主题已抽取集合（避免同局立即重复）
+  };
+}
+
+/* ---------- 4. 工具函数 ---------- */
+function rnd(n){ return Math.floor(Math.random()*n); }
+function pick(arr){ return arr[rnd(arr.length)]; }
+function shuffle(arr){ for(let i=arr.length-1;i>0;i--){ const j=rnd(i+1); [arr[i],arr[j]]=[arr[j],arr[i]]; } return arr; }
+function aliveSeats(){ return G.seats.filter(s=>s.alive); }
+function seatById(id){ return G.seats.find(s=>s.char.id===id); }
+function asset(path){ return ASSET_BASE + path; }
+
+// 工具：获取预言家已确认的狼人编号（全部 / 仅存活）——P2 可用于 UI 高亮提示
+function knownWolfIds(){ return G ? G.knownWolves.slice() : []; }
+function aliveKnownWolfIds(){ return G ? G.knownWolves.filter(id=>{ const s=seatById(id); return s && s.alive; }) : []; }
+
+// 图片加载失败兜底：替换为占位底色，保证布局不崩
+function imgFallback(imgEl){
+  imgEl.onerror = function(){ imgEl.style.background = '#d8c39a'; imgEl.removeAttribute('src'); };
+}
+
+// 击杀一名席位，并触发猎人开枪连锁（猎人仅 NPC，玩家固定为村民）。
+// 返回受影响名单（含猎人开枪的受害者），供天亮/结算播报使用。
+function killSeat(id, cause){
+  const affected = [];
+  const s = seatById(id);
+  if(!s || !s.alive) return affected;
+  s.alive = false;
+  if(s.isPlayer){ G.playerDead = true; G.playerDeathCause = cause; }   // v0.6：记录玩家出局原因（猎人被毒死不可开枪）
+  affected.push({ id: id, cause: cause });
+  // 猎人死亡 → 开枪带走一人。NPC 猎人自动开枪；玩家猎人由调用方在死亡结算后
+  // 通过 showHunterGun() 弹出开枪 UI 处理（G.hunterGunUsed 防止重复触发）。
+  // v0.6：被女巫毒死（cause==='poison'）的猎人不可开枪（与 role_info 设定一致）。
+  if(s.type === 'hunter' && cause !== 'poison'){
+    if(!s.isPlayer){
+      const shotId = hunterChooseTarget(s);
+      if(shotId != null){
+        const t = seatById(shotId);
+        if(t && t.alive){ t.alive = false; if(t.isPlayer){ G.playerDead = true; G.playerDeathCause = 'hunter'; } affected.push({ id: shotId, cause: 'hunter' }); }
+      }
+    }
+  }
+  return affected;
+}
+// 猎人开枪选靶
+function hunterChooseTarget(hunterSeat){
+  const alive = aliveSeats();
+  const known = alive.filter(x=> G.knownWolves.includes(x.char.id));
+  let target;
+  if(known.length>0 && Math.random() < BAL.hunterAcc) target = pick(known);
+  else { const cands = alive.filter(x=>x.char.id!==hunterSeat.char.id); target = cands.length ? pick(cands) : null; }
+  return target ? target.char.id : null;
+}
+
+/* ---------- 5. 身份随机分配（3 狼 / 3 神 / 3 民） ----------
+ * v0.5.3 P0-1：玩家（固定 7 号陈小明）身份随机化。
+ * 全部 9 个席位打乱后前 3 → 狼、中 3 → 神、后 3 → 民，玩家可能是任意角色，
+ * 每次重开重新随机，严格保持 3 / 3 / 3 比例。 */
+function assignRoles(){
+  // v1.1：玩家座位与身份随机独立——先随机座位上的人物，再独立随机身份卡
+  const seatChars = shuffle(CHARACTERS.slice());
+  const seats = seatChars.map(c => ({
+    char: c, alive: true, isPlayer: (c.id === G.playerId), faction: 'villager', type: null
+  }));
+  // 打乱全部 9 个席位的下标，按比例切片分配（玩家包含在内）
+  const order = shuffle([0,1,2,3,4,5,6,7,8]);
+  order.forEach((idx, i)=>{
+    const s = seats[idx];
+    if(i < 3){ s.faction = 'wolf'; s.type = WOLF_TYPES[i]; }                 // 0,1,2 → 3 狼
+    else if(i < 6){ s.faction = 'god'; s.type = GOD_TYPES[i-3]; }           // 3,4,5 → 3 神
+    else { s.faction = 'villager'; s.type = 'villager'; }                   // 6,7,8 → 3 民
+  });
+  G.seats = seats;
+}
+
+/* ---------- 5.5 状态变更统一入口 + 浮动动画 ---------- */
+// 所有状态变更必须走本函数，确保 8 显示键 + 隐藏键 liability 一致处理，
+// 并触发 +N/-N 浮动动画（仅 8 个显示键参与动画；liability 为隐藏判定键，不显示）。
+function changeStatus(key, delta, reason){
+  if(delta === 0) return;
+  const cur = (G.playerStatus[key] === undefined) ? 0 : G.playerStatus[key];
+  let nv = cur + delta;
+  if(key === 'coins'){
+    // v0.5：金币允许为负，破产条件 coins<0 && liability>5000 依赖此语义；
+    // liability 由剧本 effects 显式累加，不再自动从 coins 负值转入。
+  } else if(key === 'savings'){
+    if(nv < 0) nv = 0;                       // 储蓄不为负
+  } else if(key === 'liability'){
+    if(nv < 0) nv = 0;
+  } else {
+    if(nv < 0) nv = 0; if(nv > 100) nv = 100; // 百分比类键钳制 0–100
+  }
+  G.playerStatus[key] = nv;
+  renderStatusbar();
+  floatStatus(key, delta);
+}
+
+// 浮动数字动画：在某状态格上方飘出 +N / -N（红涨绿跌，遵循金融惯例）
+function floatStatus(key, delta){
+  if(delta === 0) return;
+  const cell = G._cells[key];
+  const bar = document.getElementById('statusbar');
+  if(!cell || !bar) return;
+  const f = document.createElement('div');
+  f.className = 'float-num ' + (delta > 0 ? 'up' : 'down');
+  f.textContent = (delta > 0 ? '+' : '') + Math.round(delta);
+  f.style.left = (cell.offsetLeft + cell.offsetWidth / 2) + 'px';
+  f.style.top  = (cell.offsetTop + 4) + 'px';
+  bar.appendChild(f);
+  setTimeout(function(){ if(f.parentNode) f.parentNode.removeChild(f); }, 1100);
+}
+
+/* ---------- 6. 渲染：状态栏 ---------- */
+function renderStatusbar(){
+  const bar = document.getElementById('statusbar');
+  bar.innerHTML = '';
+  G._cells = {}; // 重建单元格引用（浮动动画定位用）
+  STATUS_KEYS.forEach(k=>{
+    const val = G.playerStatus[k.key];
+    const label = (LANG==='en') ? k.en : k.zh;
+    const tip = k.zh + ' / ' + k.en; // 双语 tooltip：鼠标悬停显示 中文 / English 状态名
+    const isMoney = (k.key==='coins' || k.key==='savings');
+    const max = k.max || 100;
+    const pct = Math.max(0, Math.min(100, (val / max) * 100));
+    const cell = document.createElement('div');
+    cell.className = 'stat-cell';
+    cell.setAttribute('data-key', k.key);
+    cell.title = tip;               // 原生悬停 tooltip
+    G._cells[k.key] = cell;
+    cell.innerHTML = `<div class="stat-top">
+        <span class="stat-icon">${k.icon}</span>
+        <span class="stat-name">${label}</span>
+        <span class="stat-val">${isMoney ? money(val) : Math.round(val)}</span>
+      </div>
+      <div class="stat-bar"><i style="width:${pct}%"></i></div>`;
+    bar.appendChild(cell);
+  });
+}
+
+/* ---------- 7. 渲染：中央舞台（存活玩家头像） ---------- */
+function seatPointByIndex(idx){
+  const pts = [
+    ['54%','17%'],  // 1 上左
+    ['66%','17%'],  // 2 上中（法官位）
+    ['78%','17%'],  // 3 上右
+    ['37%','40%'],  // 4 左上
+    ['96%','40%'],  // 5 右上
+    ['37%','80%'],  // 6 左下
+    ['96%','80%'],  // 7 右下
+    ['54%','100%'], // 8 下左
+    ['66%','100%'], // 9 下中
+    ['78%','100%']  // 10 下右
+  ];
+  return pts[idx] || ['50%','50%'];
+}
+function buildHostSeat(){
+  return {
+    isHost: true,
+    isPlayer: false,
+    alive: true,
+    faction: 'host',
+    type: 'host',
+    char: { id: 0, portrait: 'portrait_host.png' }
+  };
+}
+function buildTableSeats(){
+  const seat9 = (G && Array.isArray(G.seats)) ? G.seats.slice() : [];
+  const table = seat9.slice();
+  table.splice(1, 0, buildHostSeat()); // 固定上排中间法官位
+  return table;
+}
+function seatDomBaseClass(s, selectable){
+  if(s && s.isHost) return 'seat host-seat';
+  return 'seat'
+    + (s.alive ? '' : ' dead')
+    + (s.isPlayer ? ' player player-seat' : '')
+    + (selectable && s.alive && !s.isPlayer ? ' selectable' : '');
+}
+function applySeatVisualMarks(div, s, playerIsWolf){
+  if(s.isHost){
+    const hostTag = document.createElement('div'); hostTag.className='seat-host';
+    hostTag.textContent = (LANG==='en' ? 'HOST' : '法官');
+    div.appendChild(hostTag);
+    return;
+  }
+  if(s.isPlayer){
+    const tag = document.createElement('div'); tag.className='seat-you';
+    tag.textContent = (LANG==='en' ? 'YOU' : '你');
+    div.appendChild(tag);
+  }
+  if(playerIsWolf && s.faction==='wolf' && !s.isPlayer){
+    div.classList.add('wolf-partner');
+    const badge = document.createElement('div'); badge.className='wolf-badge';
+    if(!s.alive){ div.classList.add('wolf-partner-out'); badge.textContent = (LANG==='en' ? 'OUT' : '已出局'); }
+    else { badge.textContent = '🐺'; }
+    div.appendChild(badge);
+  }
+}
+function renderStage(selectable=false, onPick=null){
+  const stage = document.getElementById('stage');
+  stage.innerHTML = '';
+  const playerSeat = G.seats.find(s=>s.isPlayer);
+  const playerIsWolf = !!(playerSeat && playerSeat.faction==='wolf');
+  const tableSeats = buildTableSeats();
+  let seatNum = 0;
+  tableSeats.forEach((s, idx)=>{
+    const div = document.createElement('div');
+    div.className = seatDomBaseClass(s, selectable);
+    div.setAttribute('data-id', s.char.id);
+    if(s.isHost) div.setAttribute('data-seat', 'host');
+    else { seatNum += 1; div.setAttribute('data-seat', String(seatNum)); }
+    const pos = seatPointByIndex(idx);
+    div.style.left = pos[0];
+    div.style.top = pos[1];
+
+    const img = document.createElement('img');
+    img.className = 'seat-avatar avatar';
+    img.src = s.isHost ? asset('characters/portrait_host.png') : asset('characters/' + s.char.portrait);
+    imgFallback(img);
+    div.appendChild(img);
+
+    const no = document.createElement('div');
+    no.className='seat-no';
+    no.textContent = s.isHost ? (LANG==='en' ? 'Host' : '法官') : (s.char.id + (LANG==='en'?'':'号'));
+    const nm = document.createElement('div');
+    nm.className='seat-name';
+    nm.textContent = s.isHost ? (LANG==='en' ? 'Host Sprite' : '主持人小精灵') : npcName(s.char.id);
+    div.appendChild(no); div.appendChild(nm);
+
+    if(!s.isHost){
+      const tg = document.createElement('div'); tg.className='seat-tag'; tg.textContent = npcTag(s.char.id);
+      div.appendChild(tg);
+    }
+
+    applySeatVisualMarks(div, s, playerIsWolf);
+
+    if(!s.isHost && selectable && s.alive && !s.isPlayer){
+      const handler = onPick || G._onPick;
+      if(handler) div.onclick = ()=> handler(s.char.id);
+    }
+    stage.appendChild(div);
+  });
+}
+
+/* ---------- 8. 渲染：HUD 轮次 / 阶段 ---------- */
+function renderTopbar(){
+  document.getElementById('round-info').textContent =
+    (LANG==='en' ? t('round')+' '+G.round+' '+t('roundOf') : t('round')+' '+G.round+' / '+G.maxRound+' '+t('roundOf'));
+  const phaseMap = { NIGHT:t('phaseNight'), DAY:t('phaseDay'), VOTE:t('phaseVote'), SETTLE:t('phaseSettle') };
+  document.getElementById('phase-info').textContent = phaseMap[G.phase] || '';
+  updateObserverBanner();
+}
+// v0.8 P0-1：出局玩家观察者横幅——玩家出局后在整个对局阶段显示「你已出局，作为旁观者观战」
+function updateObserverBanner(){
+  const el = document.getElementById('observer-banner');
+  if(!el) return;
+  const endShown = document.getElementById('end-panel').classList.contains('hidden') === false;
+  if(G && G.playerDead && G.phase && G.phase !== '' && !endShown){
+    el.textContent = (LANG==='en' ? 'You are out — spectating as an observer' : '你已出局，作为旁观者观战');
+    el.classList.add('show');
+  } else {
+    el.classList.remove('show');
+  }
+}
+
+/* ---------- 9. 场景背景（白天 / 夜晚） ---------- */
+function setScene(phase){
+  const scene = document.getElementById('scene');
+  if(phase==='NIGHT'){
+    scene.style.backgroundImage = `url('${asset('scenes/scene_boardgame_cafe_night.png')}')`;
+    scene.classList.add('night');
+  } else {
+    scene.style.backgroundImage = `url('${asset('scenes/scene_boardgame_cafe_day.png')}')`;
+    scene.classList.remove('night');
+  }
+  // 夜晚底图缺失时的兜底底色
+  scene.onerror = null;
+}
+
+/* ---------- 10. 对话框播放器（顺序台词 + 点击继续） ---------- */
+function say(speakerId, text, name){
+  // text / name 可为 {zh,en} 双语对象或字符串；规整后存入队列，保证历史可双语重渲染
+  G.dialogQueue.push({ speakerId, text: normB(text), name: normB(name) });
+}
+function playDialogQueue(after){
+  G.pendingAfterDialog = after;
+  advanceDialog();
+}
+function advanceDialog(){
+  if(G.dialogQueue.length === 0){
+    const cb = G.pendingAfterDialog; G.pendingAfterDialog = null; G._curDialogItem = null;
+    if(cb) cb();
+    return;
+  }
+  const item = G.dialogQueue.shift();
+  G._curDialogItem = item;
+  renderDialogItem(item);
+}
+// 渲染一条对话框内容（语言切换时重渲染当前句）；历史按双语存储
+function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function renderDialogItem(item, skipHistory){
+  const nameEl = document.getElementById('d-name');
+  const textEl = document.getElementById('d-text');
+  const portEl = document.getElementById('d-portrait');
+  const imgEl = document.getElementById('d-pimg');
+  let nameB = { zh:'', en:'' };   // 双语姓名
+  if(item.speakerId == null){
+    // 主持人 / 旁白 → 真实头像（P1-1，失败回退 mic）
+    nameEl.textContent = t('narrator');
+    setHostPortrait(imgEl);
+    portEl.style.background = '#FFF8E7';
+    nameB = tB('hostName');
+    markSpeaking(null);
+  } else {
+    const s = seatById(item.speakerId);
+    if(s){
+      const nb = npcNameB(s.char.id);
+      nameB = { zh:(s.char.id+'号 '+nb.zh), en:(s.char.id+' '+nb.en) };
+      nameEl.textContent = txtB(nameB);
+      imgEl.src = asset('characters/'+s.char.full);   // P1-3：全身像
+      portEl.style.background = '#FFF8E7';
+      markSpeaking(s.char.id);
+    } else {
+      // 非 1-9 号（历史曾出现的非名单发言者 / 或其他异常发言者）兜底分支：
+      // 用剧本自带 name，头像回退 GUEST_SPEAKERS 或 SVG_PERSON 人像占位，杜绝 undefined / 空白头像。
+      // 当前 B3 game_data/rounds_data.js 已重同步为 A2 清理版，数据层无残留，本分支正常不触发。
+      nameB = normB(item.name);
+      nameEl.textContent = txtB(nameB) || t('narrator');
+      const g = GUEST_SPEAKERS[item.speakerId];
+      imgEl.src = g ? g.icon : SVG_PERSON;
+      portEl.style.background = '#FFF8E7';
+      markSpeaking(null);
+    }
+  }
+  textEl.textContent = txtB(item.text);
+  textEl.scrollTop = 0;
+  // 历史记录：双语存储每句对话（P0-2）；语言切换重渲染时跳过以免重复
+  if(!skipHistory) historyAppend({ name: nameB, text: normB(item.text) });
+  updateNextLabel();
+}
+
+/* ---------- 11. 事件日志（汇入右侧历史面板，P0-2 双语） ---------- */
+function log(html){ logB(html, { cls:'h-event' }); }
+
+/* ---------- 12. 主流程：开始 ---------- */
+function startGame(lang){
+  if(lang) LANG = (lang==='en') ? 'en' : 'zh';   // P0-3：开始菜单选择语言
+  document.documentElement.lang = (LANG==='en') ? 'en' : 'zh-CN';   // v0.8.1：驱动 :lang(en) 仅英文微调字号
+  document.getElementById('start-panel').classList.add('hidden');
+  updateObserverBanner(); // 开局时玩家未出局，确保横幅隐藏
+  undoStack = []; const ub=document.getElementById('btn-undo'); if(ub) ub.disabled=true;
+  const h=document.getElementById('log'); if(h) h.innerHTML='';
+  G = newGameState();
+  G.playerId = rnd(9) + 1;   // 优化5：每局玩家号码 1-9 随机（身份仍由 assignRoles 3/3/3 随机分配）
+  initKnowledgeShuffle();    // Bug3：每局重置知识点卡洗牌序列
+  assignRoles();
+  renderStatusbar();
+  renderTopbar();
+  renderStage();
+  logB(B('第 1 轮 · 9 人局，身份已随机分配', 'Round 1 · 9 players · roles assigned'), { cls:'h-event', bold:true });
+  // P0-1：先展示开局身份告知面板，玩家点「开始游戏」后才进入第一轮
+  showIdentityPanel();
+}
+
+/* ---------- 12.1 一轮的开始：夜晚 → 白天讨论 → 投票 → 结算 ---------- */
+function beginRound(){
+  logB(B('—— 第 '+G.round+' 轮 ——', '— Round '+G.round+' —'));
+  G.phase = 'NIGHT';
+  G.playerVoteWeight = 1; // v1.0：兼容字段每轮归一，计票始终按 1 票处理
+  renderTopbar();
+  setScene('NIGHT');
+  renderStage();
+  // 夜晚：狼人秘密行动（P2 接入预言家查验 / 女巫用药 / 猎人开枪）
+  G.dialogQueue = [];
+  say(null, B(`第 ${G.round} 轮：夜幕降临，狼人正在秘密选择今晚的目标……`, `Round ${G.round}: Night falls. The wolves are choosing their prey...`));
+  playDialogQueue(()=> nightAction());
+}
+
+/* ---------- 12.2 夜晚行动：狼人击杀 → 预言家查验 → 女巫用药 → 天亮 announce ----------
+ * v0.5.3 P0-1 / P2：玩家持有狼 / 预言家 / 女巫身份时，对应夜间行动交由玩家交互决策；
+ * 其余 NPC 仍自动结算。猎人无夜间行动，但出局时可开枪（见 showHunterGun）。 */
+function nightAction(){
+  const alive = aliveSeats();
+  const wolves = alive.filter(s=>s.faction==='wolf');
+  const preyAll = alive.filter(s=>s.faction!=='wolf'); // 狼可刀任何非狼
+  const playerSeat = G.seats.find(s=>s.isPlayer);
+  const playerIsWolf  = playerSeat.alive && playerSeat.faction==='wolf';
+  const playerIsSeer  = playerSeat.alive && playerSeat.faction==='god' && playerSeat.type==='seer';
+  const playerIsWitch = playerSeat.alive && playerSeat.faction==='god' && playerSeat.type==='witch';
+
+  G.nightKillId = null;
+  // 狼人击杀：玩家为狼 → 交由玩家决策（presentWolfAction）；否则自动（含首夜按兵不动）
+  if(wolves.length>0 && !playerIsWolf){
+    if(G.round === 1){
+      G.nightKillId = null; // 首夜狼人按兵不动（平衡：放缓早期减员，确保 5-6 轮可达）
+    } else {
+      const markedNow = G.marks.some(m=> m.round===G.round);
+      const priorityNow = G.flags.priorityKill;
+      let target = null;
+      if(playerSeat.alive && (markedNow || priorityNow) && Math.random() < 0.7) target = playerSeat;
+      // 防御：若已无非狼存活者（好边被屠尽），则无可击杀目标，nightKillId 保持 null（P0 边界）
+      G.nightKillId = (target ? target.char.id : (preyAll.length ? pick(preyAll).char.id : null));
+    }
+  }
+  // 预言家查验：玩家为预言家 → 交由玩家决策；否则自动（存活>2 守卫）
+  const seer = alive.find(s=>s.faction==='god' && s.type==='seer');
+  if(seer && !seer.isPlayer && alive.length>2){
+    const others = alive.filter(s=>s.char.id!==seer.char.id);
+    const wlf = others.filter(s=>s.faction==='wolf');
+    const tgt = (wlf.length>0 && Math.random() < BAL.seerWolfBias) ? pick(wlf) : pick(others);
+    G.lastSeerCheck = { seerId: seer.char.id, targetId: tgt.char.id, isWolf: tgt.faction==='wolf' };
+  } else if(!(seer && seer.isPlayer)){
+    G.lastSeerCheck = null;
+  }
+  // 女巫：玩家为女巫 → 交由玩家决策；否则自动
+  G.nightSavedId = null; G.nightPoisonId = null;
+  const witch = alive.find(s=>s.faction==='god' && s.type==='witch');
+  if(witch && !witch.isPlayer){
+    if(G.witchAntidote && G.nightKillId && Math.random() < BAL.witchSave){
+      G.nightSavedId = G.nightKillId; G.witchAntidote = false; // 救下狼刀目标
+    }
+    if(G.witchPoison && Math.random() < BAL.witchPoison){
+      const cands = alive.filter(s=>s.char.id!==G.nightSavedId);
+      if(cands.length>0){ G.nightPoisonId = pick(cands).char.id; G.witchPoison = false; }
+    }
+  }
+
+  // 汇总玩家夜间行动（若玩家持有对应身份），否则直接结算天亮
+  const finishNight = ()=> resolveNightDeaths();
+  if(playerIsWolf)        presentWolfAction(finishNight);
+  else if(playerIsSeer)   presentSeerAction(finishNight);
+  else if(playerIsWitch)  presentWitchAction(finishNight);
+  else finishNight();
+}
+
+/* ---------- 12.2b v0.5.3 玩家夜间行动 UI（复用 #choice-panel） ---------- */
+function panelHide(){ const p=document.getElementById('choice-panel'); if(p) p.classList.remove('show'); G._nightRebuild = null; G._nightButtons = null; }
+// 渲染夜间行动面板；titleB/descB 为 {zh,en} 或字符串；infoB 为顶部信息框（如狼人同伴，红色狼头）
+function renderNightPanel(titleB, descB, buttons, infoB){
+  const panel = document.getElementById('choice-panel');
+  panel.classList.add('show'); panel.innerHTML = '';
+  const t = document.createElement('div'); t.className='cp-title'; t.textContent = txtB(titleB); panel.appendChild(t);
+  const info = txtB(infoB);
+  if(info){ const ib=document.createElement('div'); ib.className='cp-info'; ib.textContent=info; panel.appendChild(ib); }
+  const d = txtB(descB);
+  if(d){ const dd=document.createElement('div'); dd.className='cp-desc'; dd.textContent=d; panel.appendChild(dd); }
+  buttons.forEach(b=>{
+    const btn=document.createElement('button'); btn.className='choice-opt'+(b.selected?' selected':'');
+    btn.innerHTML = b.html || escapeHtml(b.label);
+    btn.onclick = b.onclick;
+    panel.appendChild(btn);
+  });
+  G._nightButtons = buttons; // 暴露给自动化测试驱动
+}
+// 狼人行动：显示同伴信息（Bug1）+ 选择击杀目标（非狼存活者，排除同伴）；首夜按兵不动
+function presentWolfAction(done){
+  const wolves = G.seats.filter(s=>s.faction==='wolf');
+  const partners = wolves.filter(s=>!s.isPlayer);
+  let infoZh, infoEn;
+  if(partners.length===0){
+    infoZh = '🐺 你是最后的狼人，请谨慎行动';
+    infoEn = '🐺 You are the last wolf — act with caution';
+  } else {
+    const zl = partners.map(s=> seatLabel(s.char.id)+' '+npcNameB(s.char.id).zh + (s.alive ? '' : '（已出局）'));
+    const el = partners.map(s=> s.char.id+' '+npcNameB(s.char.id).en + (s.alive ? '' : ' (out)'));
+    infoZh = '🐺 你的狼人同伴：'+zl.join('、');
+    infoEn = '🐺 Your werewolf partners: '+el.join(', ');
+  }
+  const alive = aliveSeats();
+  const prey = alive.filter(s=>s.faction!=='wolf');
+  const rebuild = ()=>{
+    let buttons;
+    if(prey.length===0){
+      const hold = (LANG==='en') ? "Don't kill — end the night" : '不杀人，结束夜晚';
+      buttons = [{ label: hold, onclick: ()=>{ G.nightKillId = null; panelHide(); done(); } }];
+    } else {
+      // v0.8 P0-3：每轮夜晚都提供击杀目标（排除同伴+已出局），并显式提供「不杀人」选项
+      buttons = prey.map(s=>({
+        label: seatLabel(s.char.id)+' '+npcName(s.char.id),
+        onclick: ()=>{ G.nightKillId = s.char.id; panelHide(); done(); }
+      }));
+      buttons.push({
+        label: (LANG==='en' ? "Don't kill — end the night" : '不杀人，结束夜晚'),
+        onclick: ()=>{ G.nightKillId = null; panelHide(); done(); }
+      });
+    }
+    renderNightPanel(t('nightWolfTitle'), t('nightWolfDesc'), buttons, { zh:infoZh, en:infoEn });
+  };
+  G._nightRebuild = rebuild; rebuild();
+}
+// 预言家行动：查验一名玩家（非自己）
+function presentSeerAction(done){
+  const alive = aliveSeats();
+  const cands = alive.filter(s=>!s.isPlayer);
+  if(cands.length===0){ done(); return; }
+  const rebuild = ()=>{
+    const buttons = cands.map(s=>({
+      label: seatLabel(s.char.id)+' '+npcName(s.char.id),
+      onclick: ()=>{
+        const isWolf = s.faction==='wolf';
+        G.lastSeerCheck = { seerId: G.playerId, targetId: s.char.id, isWolf };
+        if(isWolf && !G.knownWolves.includes(s.char.id)) G.knownWolves.push(s.char.id);
+        const nb = npcNameB(s.char.id);
+        const slZh = s.char.id+'号', slEn = ''+s.char.id;
+        const resZh = isWolf ? '的查验结果是：狼人！' : '的查验结果是：好人（神民 / 村民）';
+        const resEn = isWolf ? ': a WOLF!' : ': a good player (god / villager)';
+        logB(B(`你查验了 ${slZh} ${nb.zh}${resZh}`, `You checked ${slEn} ${nb.en}${resEn}`), { cls:'h-event' });
+        const rTitle = isWolf ? B('你查验到一只狼人！','You found a WOLF!') : B('你查验到一位好人。','You found a good player.');
+        const resultBtns = [{ label: t('nightConfirm'), onclick: ()=>{ panelHide(); done(); } }];
+        renderNightPanel(rTitle, '', resultBtns);
+        G._nightRebuild = ()=> renderNightPanel(rTitle, '', resultBtns);
+      }
+    }));
+    renderNightPanel(t('nightSeerTitle'), t('nightSeerDesc'), buttons);
+  };
+  G._nightRebuild = rebuild; rebuild();
+}
+// v0.7.1 女巫行动（P0 重写）：严格夜晚顺序 —— 狼人先刀人(nightAction 已记录 nightKillId)
+//   → 告知今夜被杀者 → 解药(独立,仅 witchAntidote) → 毒药(独立,仅 witchPoison) → 结算。
+// 关键修复：①「不使用解药/毒药」绝不把对应 used 标记置 true（只有真正使用才置 true）；
+//          ② 只要还有药未用，女巫阶段每轮都必须进入（不会因上一轮「不使用」而永久跳过）；
+//          ③ 狼人必须先完成击杀，女巫才能看到死亡信息；④ 女巫自己被杀不能自救但可下毒；
+//          ⑤ 解药与毒药均已用完 → 显示「你的药已用完」并直接跳过。
+function presentWitchAction(done){
+  G._witchPhaseTrace = [];                 // 自测用：记录本夜女巫流程阶段序列（announce/antidote/poison/skip）
+  G._witchConsulted  = (G._witchConsulted||0) + 1;
+  const alive = aliveSeats();
+  const killedId = (G.nightKillId && G.nightKillId !== G.nightSavedId) ? G.nightKillId : null;
+  const killed = killedId ? seatById(killedId) : null;
+
+  // 药已用完：解药与毒药都已用 → 直接跳过，提示「你的药已用完」（不再进入任何选择）
+  if(!G.witchAntidote && !G.witchPoison){
+    G._witchPhaseTrace.push('skip');
+    const zh = '你的药已用完，今晚无法再行动。', en = 'Your potions are used up — nothing more to do tonight.';
+    const buttons = [{ label: (LANG==='en' ? 'End the night' : '结束夜晚'), onclick: ()=>{ panelHide(); done(); } }];
+    renderNightPanel(B('🧪 女巫 · 夜晚', '🧪 Witch · Night'), B(zh, en), buttons);
+    G._nightRebuild = ()=> renderNightPanel(B('🧪 女巫 · 夜晚', '🧪 Witch · Night'), B(zh, en), buttons);
+    return;
+  }
+
+  // 步骤 A：告知女巫今夜谁被狼人击杀（狼人已在 nightAction 完成击杀并写入 nightKillId）
+  function stepAnnounce(next){
+    G._witchPhaseTrace.push('announce');
+    if(!killed){
+      const zh = '今晚平安，无人被狼人击杀。', en = "It's a peaceful night — no one was killed by the wolves.";
+      logB(B(zh, en), { cls:'h-event' });
+      const buttons = [{ label: (LANG==='en' ? 'Continue' : '继续'), onclick: ()=>{ panelHide(); next(); } }];
+      renderNightPanel(t('nightWitchTitle'), B(zh, en), buttons);
+      G._nightRebuild = ()=> renderNightPanel(t('nightWitchTitle'), B(zh, en), buttons);
+    } else {
+      const nb = npcNameB(killed.char.id);
+      const slZh = killed.char.id+'号', slEn = ''+killed.char.id;
+      const zh = killed.isPlayer ? '你今晚被狼人击杀了。' : `今晚 ${slZh} ${nb.zh} 被狼人击杀。`;
+      const en = killed.isPlayer ? 'You were killed by the wolves tonight.' : `Tonight ${slEn} ${nb.en} was killed by the wolves.`;
+      logB(B(zh, en), { cls:'h-event' });
+      const buttons = [{ label: (LANG==='en' ? 'Continue' : '继续'), onclick: ()=>{ panelHide(); next(); } }];
+      renderNightPanel(t('nightWitchTitle'), B(zh, en), buttons);
+      G._nightRebuild = ()=> renderNightPanel(t('nightWitchTitle'), B(zh, en), buttons);
+    }
+  }
+
+  // 步骤 B：解药（仅 witchAntidote===true；且 有被杀者 且 被杀者非自己）
+  function stepAntidote(next){
+    if(!G.witchAntidote){ next(); return; }          // 解药已用：跳过（绝不消耗毒药）
+    if(!killed){ next(); return; }                    // 无人被杀：无药可救，跳过
+    if(killed.isPlayer){                              // 自己被杀：不能自救，跳过并提示
+      G._witchPhaseTrace.push('antidote-skip-self');
+      logB(B('你无法使用解药救自己', 'You cannot use the antidote to save yourself'), { cls:'h-event' });
+      next(); return;
+    }
+    G._witchPhaseTrace.push('antidote');
+    const nb = npcNameB(killed.char.id);
+    const slZh = killed.char.id+'号', slEn = ''+killed.char.id;
+    const titleZh = '🧪 女巫行动 · 解药', titleEn = '🧪 Witch Action · Antidote';
+    const descZh = `是否使用解药救下 ${slZh} ${nb.zh}？`;
+    const descEn = `Use the antidote to save ${slEn} ${nb.en}?`;
+    const rebuild = ()=>{
+      const buttons = [
+        { label: (LANG==='en' ? 'Use Antidote (save '+slEn+' '+nb.en+')' : '使用解药救'+slZh+' '+nb.zh),
+          onclick: ()=>{ G.nightSavedId = killed.char.id; G.witchAntidote = false;   // 真正使用才置 true
+            logB(B(`你用解药救下了 ${slZh} ${nb.zh}`, `You saved ${slEn} ${nb.en}`), { cls:'h-event' });
+            panelHide(); next(); } },
+        { label: (LANG==='en' ? "Don't use antidote" : '不使用解药'),
+          onclick: ()=>{ /* 不使用：绝不消耗解药，保留以便后续轮次使用 */ panelHide(); next(); } }
+      ];
+      renderNightPanel(B(titleZh,titleEn), B(descZh,descEn), buttons);
+    };
+    G._nightRebuild = rebuild; rebuild();
+  }
+
+  // 步骤 C：毒药（仅 witchPoison===true；可毒任意存活玩家，含狼人；女巫自己被杀也可下毒）
+  function stepPoison(){
+    if(!G.witchPoison){ done(); return; }             // 毒药已用：结束
+    G._witchPhaseTrace.push('poison');
+    const poisonCands = alive.filter(s=> s.char.id !== G.nightSavedId);
+    const titleZh = '🧪 女巫行动 · 毒药', titleEn = '🧪 Witch Action · Poison';
+    const descZh = '是否使用毒药？可毒杀任意存活玩家（各限一次）。';
+    const descEn = 'Use the poison? You may poison any alive player (one use only).';
+    const rebuild = ()=>{
+      const buttons = [
+        { label: (LANG==='en' ? 'Use Poison' : '使用毒药'),
+          onclick: ()=>{
+            const sub = poisonCands.map(s=>({
+              label: seatLabel(s.char.id)+' '+npcName(s.char.id),
+              onclick: ()=>{ G.nightPoisonId = s.char.id; G.witchPoison = false;   // 真正使用才置 true
+                const nb=npcNameB(s.char.id), slZh=s.char.id+'号', slEn=''+s.char.id;
+                logB(B(`你用毒药毒杀了 ${slZh} ${nb.zh}`, `You poisoned ${slEn} ${nb.en}`), { cls:'h-event' });
+                panelHide(); done(); } }));
+            const subTitle = B('🧪 女巫行动 · 选择毒杀目标', '🧪 Witch Action · Choose poison target');
+            renderNightPanel(subTitle, '', sub);
+            G._nightRebuild = ()=> renderNightPanel(subTitle, '', sub);
+          } },
+        { label: (LANG==='en' ? "Don't use poison — end the night" : '不使用毒药，结束夜晚'),
+          onclick: ()=>{ /* 不使用：绝不消耗毒药，保留以便后续轮次使用 */ panelHide(); done(); } }
+      ];
+      renderNightPanel(B(titleZh,titleEn), B(descZh,descEn), buttons);
+    };
+    G._nightRebuild = rebuild; rebuild();
+  }
+
+  // 主线：狼人已刀人（nightAction 完成）→ 告知 → 解药 → 毒药 → 结算
+  stepAnnounce(()=> stepAntidote(()=> stepPoison()));
+}
+// 猎人开枪（玩家出局时）：带走一名存活玩家（含狼人），或放弃
+function showHunterGun(done){
+  const alive = aliveSeats();
+  const cands = alive.filter(s=>!s.isPlayer);
+  if(cands.length===0){ G.hunterGunUsed = true; done(); return; }
+  const rebuild = ()=>{
+    const buttons = cands.map(s=>({
+      label: seatLabel(s.char.id)+' '+npcName(s.char.id),
+      onclick: ()=>{
+        const t2 = seatById(s.char.id);
+        if(t2 && t2.alive){ t2.alive=false; if(t2.isPlayer){ G.playerDead=true; G.playerDeathCause='hunter'; }
+          const nb=npcNameB(s.char.id), slZh=s.char.id+'号', slEn=''+s.char.id;
+          logB(B(`你开枪带走了 ${slZh} ${nb.zh}`, `You shot ${slEn} ${nb.en}`), { cls:'h-event' }); }
+        panelHide(); G.hunterGunUsed = true; done();
+      }
+    }));
+    buttons.push({ label: t('hunterGunSkip'), onclick: ()=>{ panelHide(); G.hunterGunUsed = true; done(); } });
+    renderNightPanel(t('hunterGunTitle'), t('hunterGunDesc'), buttons);
+  };
+  G._nightRebuild = rebuild; rebuild();
+}
+// 天亮：结算死亡（狼刀 + 女巫毒），含猎人开枪连锁，随后播报并进入白天剧本
+function resolveNightDeaths(){
+  const beforeAlive = aliveSeats().map(s=>s.char.id);
+  const deaths = [];
+  if(G.nightKillId && G.nightKillId!==G.nightSavedId) deaths.push({ id: G.nightKillId, cause: 'wolf' });
+  if(G.nightPoisonId) deaths.push({ id: G.nightPoisonId, cause: 'poison' });
+  let affected = [];
+  deaths.forEach(d=>{ affected = affected.concat(killSeat(d.id, d.cause)); });
+  const nowDead = beforeAlive.filter(id=>{ const s=seatById(id); return s && !s.alive; });
+
+  G.phase = 'DAY'; renderTopbar(); setScene('DAY'); renderStage();
+  G.dialogQueue = [];
+  if(nowDead.length===0){
+    // v0.8 P1-6：明确平安夜原因，杜绝「连续平安夜」歧义
+    if(G.nightKillId && G.nightSavedId && G.nightSavedId===G.nightKillId){
+      const v = seatById(G.nightKillId); const nb = v ? npcNameB(v.char.id) : {zh:'',en:''};
+      const slZh = G.nightKillId+'号', slEn = ''+G.nightKillId;
+      say(null, B(`天亮了，${slZh} ${nb.zh} 被狼人击杀但被女巫救下，昨夜无人遇害。`,
+                   `Dawn breaks. No.${slEn} ${nb.en} was killed by the wolves but saved by the Witch — no one died last night.`));
+    } else {
+      say(null, B('天亮了，狼人没有选择击杀目标，昨夜无人遇害。',
+                   'Dawn breaks. The wolves chose not to kill — no one died last night.'));
+    }
+  } else {
+    nowDead.forEach(id=>{
+      const v = seatById(id);
+      const how = B('在夜晚被狼人带走', 'taken by the wolves');
+      if(G.nightSavedId===id){ how.zh='被女巫救下'; how.en='saved by the Witch'; }        // 不会出现在 nowDead
+      else if(G.nightPoisonId===id){ how.zh='被女巫毒杀'; how.en='poisoned by the Witch'; }
+      else if(affected.some(a=>a.id===id && a.cause==='hunter')){ how.zh='被猎人开枪带走'; how.en='shot by the Hunter'; }
+      const nb = npcNameB(v.char.id);
+      const slZh = v.char.id+'号', slEn = ''+v.char.id;
+      say(null, B(`天亮了，${slZh} ${nb.zh} 被发现——${how.zh}。`, `At dawn, ${slEn} ${nb.en} is found — ${how.en}.`));
+      logB(B(`${slZh} ${nb.zh} ${how.zh}`, `${slEn} ${nb.en} ${how.en}`), { cls:'h-event' });
+    });
+  }
+  // 玩家猎人若在夜晚出局 → 开枪 UI（打断，回调后进入白天剧本）。
+  // v0.6：统一入口 maybePlayerHunterShot 含「非猎人/已开枪/被毒死」守卫，杜绝重复触发。
+  maybePlayerHunterShot(()=> playDialogQueue(()=>{ presentRound(); }));
+}
+// v0.6：玩家猎人出局开枪统一入口（防重复触发）。
+// 仅当「玩家已出局 且 是猎人 且 未被女巫毒死 且 尚未开过枪」才弹出开枪 UI；否则直接 done()。
+// 非猎人玩家 / 已开过枪 / 被毒死 一律不触发。
+function maybePlayerHunterShot(done){
+  const p = G.seats.find(s=>s.isPlayer);
+  if(p && !p.alive && p.type==='hunter' && !G.hunterGunUsed && G.playerDeathCause!=='poison'){
+    showHunterGun(()=>{ G.hunterGunUsed = true; done(); });
+  } else {
+    done();
+  }
+}
+// 投票/平票出局后：若玩家（猎人）被投出且符合开枪条件，弹出开枪 UI 并接管结算；否则返回 false 走正常结算
+function proceedAfterElimination(){
+  const p = G.seats.find(s=>s.isPlayer);
+  if(p && !p.alive && p.type==='hunter' && !G.hunterGunUsed && G.playerDeathCause!=='poison'){
+    showHunterGun(()=>{ G.hunterGunUsed = true; settle(); });
+    return true;
+  }
+  return false;
+}
+
+// v0.6：胜负判定（标准狼人规则 + 屠边）——每轮白天投票结算后立即调用。
+// 返回：'GOOD'（狼人全灭 → 好人阵营胜利）/ 'WOLF'（神职全灭 或 普通村民全灭 → 狼人阵营胜利·屠边）
+//       / 'END'（场上仅剩 ≤1 人，强制结束；存活者阵营即胜方）/ null（未分胜负，继续下一轮）。
+function checkWinCondition(){
+  const al = aliveSeats();
+  if(al.length <= 1){
+    if(al.length === 0) return 'WOLF';                 // 防御：理论上不会发生
+    return (al[0].faction === 'wolf') ? 'WOLF' : 'GOOD';
+  }
+  const aw = al.filter(s=>s.faction==='wolf').length;
+  const ag = al.filter(s=>s.faction==='god').length;
+  const av = al.filter(s=>s.faction==='villager').length;
+  if(aw === 0) return 'GOOD';        // 狼人全部出局 → 好人阵营胜利
+  if(ag === 0 || av === 0) return 'WOLF';   // 神职全部出局 或 普通村民全部出局 → 狼人阵营胜利（屠边）
+  return null;                       // 未分胜负
+}
+
+/* ---------- 12.3 白天·剧本流程（A2 真实数据） ---------- */
+function presentRound(){
+  G.phase = 'DAY';
+  renderTopbar();
+  if(typeof roundsData === 'undefined' || !roundsData || !roundsData[G.round-1]){ enterVote(); return; }
+  const rd = roundsData[G.round-1];   // 6 轮，索引 0-5
+  G.roundData = rd;
+  G.dialogQueue = [];
+  // 场景旁白（双语）
+  say(null, B(`第 ${G.round} 轮·${rd.title.zh}（${rd.theme.zh}）`, `Round ${G.round}·${rd.title.en} (${rd.theme.en})`));
+  say(null, B(rd.scene.zh, rd.scene.en));
+  // 剧本化台词（roundsData.dialogues，含 1-9 号 NPC；数据已重同步为 A2 清理版，R1 发言者为 9 号周健，无客串）
+  rd.dialogues.forEach(d=>{
+    say(d.speaker, d.text, d.name);
+  });
+  // 每个存活 NPC 追加一句 day[round] 全状态台词（A2 数据）
+  aliveSeats().filter(s=>!s.isPlayer).forEach(s=>{
+    const npc = NPC_BY_ID[s.char.id];
+    if(npc && npc.lines && npc.lines.day && npc.lines.day[G.round]){
+      const arr = npc.lines.day[G.round];
+      const line = arr[0]; // 取第一句作为当日发言
+      if(line) say(s.char.id, line);
+    }
+  });
+  // v0.8 P0-2：主持人不再剧透身份——预言家查验结果仅夜晚私密告知预言家玩家（玩家预言家在夜间已看到）；
+  // NPC 预言家若存活，由其**本人发言跳身份**（非主持人公告）；主持人绝不说出任何存活玩家身份/结果。
+  if(G.lastSeerCheck){
+    const sc = G.lastSeerCheck;
+    const seer = seatById(sc.seerId), tgt = seatById(sc.targetId);
+    const resZh = sc.isWolf ? '狼人' : '好人';
+    const resEn = sc.isWolf ? 'a WOLF' : 'a good citizen';
+    const nbTgt = npcNameB(tgt.char.id);
+    const slSeerZh = seer.char.id+'号', slSeerEn = ''+seer.char.id;
+    const slTgtZh = tgt.char.id+'号', slTgtEn = ''+tgt.char.id;
+    // 内部线索仍保留给镇民 AI（维持阵营平衡），但绝不通过主持人公开披露
+    if(sc.isWolf && !G.knownWolves.includes(sc.targetId)) G.knownWolves.push(sc.targetId);
+    // NPC 预言家跳身份：由其本人发言（非主持人公告）；玩家预言家已私密知晓，不强制公开
+    if(seer && seer.alive && !seer.isPlayer){
+      say(sc.seerId, B(`我是预言家！昨晚我查验了 ${slTgtZh} ${nbTgt.zh}，他的身份是${resZh}！`,
+                       `I am the Seer! Last night I checked ${slTgtEn} ${nbTgt.en} — ${resEn}!`));
+    }
+  }
+  playDialogQueue(()=> presentChoice(rd.choices, { round: rd, isMain:true, onDone: ()=> presentSubEvents(rd, 0) }));
+}
+
+function checkSubEventCondition(se){
+  if(!se || !se.condition) return true;
+  const c = se.condition;
+  const st = G && G.playerStatus ? G.playerStatus : {};
+  const trigger = c.trigger || '';
+  if(trigger === 'markedDeep'){
+    const stFlag = Number(st.markedDeep||0) === 1;
+    const markFlag = Array.isArray(G.marks) && G.marks.some(m=>m && m.deep);
+    return stFlag || markFlag;
+  }
+  if(typeof c.key === 'string'){
+    if(typeof c.eq !== 'undefined') return st[c.key] === c.eq;
+    if(typeof c.gte !== 'undefined') return Number(st[c.key]||0) >= Number(c.gte);
+    if(typeof c.lte !== 'undefined') return Number(st[c.key]||0) <= Number(c.lte);
+  }
+  return true;
+}
+// 依次播放当前轮的支线子事件，结束后进入投票
+function presentSubEvents(rd, idx){
+  if(idx >= rd.subEvents.length){ enterVote(); return; }
+  const se = rd.subEvents[idx];
+  if(!checkSubEventCondition(se)){
+    logB(B(`条件未满足，已跳过支线：${se.title.zh}`, `Condition unmet, skipped side event: ${se.title.en}`), { cls:'h-event' });
+    presentSubEvents(rd, idx+1);
+    return;
+  }
+  G.dialogQueue = [];
+  say(null, B(`支线·${se.title.zh}`, `Side·${se.title.en}`));
+  say(null, B(se.scene.zh, se.scene.en));
+  (se.dialogues||[]).forEach(d=> say(d.speaker, d.text, d.name));
+  playDialogQueue(()=> presentChoice(se.choices, { round: rd, sub: se, onDone: ()=> presentSubEvents(rd, idx+1) }));
+}
+
+/* ---------- 12.3b 选择题 UI（单选 / 多选 / 自动结算） ---------- */
+function presentChoice(choices, opts, skipUndo){
+  opts = opts || {};
+  // v0.8 P0-1：玩家已出局 → 进入观察者模式，不做金融选择题、不修改 8 键状态栏（冻结），直接推进流程
+  if(G.playerDead){
+    logB(B('你已出局，作为旁观者观战', 'You are out — spectating as an observer'), { cls:'h-event' });
+    if(opts && opts.onDone) opts.onDone();
+    return;
+  }
+  if(!skipUndo) pushUndo({ type:'choice', choices, opts });
+  const round = opts.round, sub = opts.sub;
+  const multi = !!(round && round.multiSelect);     // 仅第5轮主题为 true
+  const auto  = !!(sub && sub.autoCalc);            // 第6-2 自动结算
+  // 结果叙事取自选项所属对象（主线轮 / 支线）的 consequences 映射，而非单选项自身
+  const conseqMap = sub ? sub.consequences : (round ? round.consequences : null);
+  if(auto){ presentAutoCalc(sub, opts.onDone); return; }
+  G.phase = 'DAY'; renderTopbar();
+  const panel = document.getElementById('choice-panel');
+  panel.classList.add('show'); panel.innerHTML = '';
+  const title = document.createElement('div'); title.className='cp-title';
+  title.textContent = multi ? t('multiChoiceTitle') : t('choiceTitle');
+  panel.appendChild(title);
+  const desc = document.createElement('div'); desc.className='cp-desc';
+  desc.textContent = (sub ? TXT(sub.title.zh, sub.title.en) : TXT(`${round.title.zh}：${round.theme.zh}`, `${round.title.en}: ${round.theme.en}`));
+  panel.appendChild(desc);
+  G._curChoices = choices;
+  G._lastChoiceCall = { choices, opts };
+  G._lastResult = null;
+
+  if(multi){
+    const selected = {};
+    const btns = choices.map(c=>{
+      const b = document.createElement('button'); b.className='choice-opt';
+      b.innerHTML = `${c.id}. ${TXT(c.text.zh, c.text.en)}` + (c.knowledge?`<span class="opt-knowledge">💡 ${t('linkedKnowledge')}</span>`:'');
+      b.onclick = ()=>{ selected[c.id] = !selected[c.id]; b.classList.toggle('selected', selected[c.id]); };
+      panel.appendChild(b); return b;
+    });
+    const submit = document.createElement('button'); submit.className='cp-submit'; submit.textContent = t('submitBtn');
+    submit.onclick = ()=>{
+      const picked = Object.keys(selected).filter(k=>selected[k]);
+      let correct=0; choices.forEach(c=>{ const isPicked = picked.includes(c.id); if(c.isScam===isPicked) correct++; });
+      const n = choices.length;
+      let tier = round.scoring.correct01;
+      if(correct===n) tier = round.scoring.allCorrect;
+      else if(correct>=Math.min(n,4)) tier = round.scoring.correct45;
+      else if(correct>=2) tier = round.scoring.correct23;
+      else tier = round.scoring.correct01;
+      changeStatus('literacy', tier.literacy);
+      panel.classList.remove('show');
+      showChoiceResult(()=>{
+        const lines = choices.map(c=> `${c.id}. ${TXT(conseqMap[c.id].zh, conseqMap[c.id].en)}`).join('<br>');
+        const head = TXT(`你正确识别了 ${correct}/${n} 条。`, `You correctly spotted ${correct}/${n}.`) + (tier.label? `<br><b>${TXT(tier.label.zh, tier.label.en)}</b>`:'');
+        return head + '<br>' + lines;
+      }, opts.onDone);
+    };
+    panel.appendChild(submit);
+    G._choice = { submit: ()=>submit.onclick(), pick:(id)=>{ if(!selected[id]){ selected[id]=true; const i=choices.findIndex(c=>c.id===id); if(i>=0) btns[i].classList.add('selected'); } } };
+    return;
+  }
+
+  // 单选题
+  const handlers = {};
+  choices.forEach(c=>{
+    const b = document.createElement('button'); b.className='choice-opt';
+    b.innerHTML = `${c.id}. ${TXT(c.text.zh, c.text.en)}` + (c.knowledge?`<span class="opt-knowledge">💡 ${t('linkedKnowledge')}</span>`:'');
+    b.onclick = handlers[c.id] = ()=>{
+      panel.classList.remove('show');
+      applyChoiceEffects(c, opts);
+      const conseq = (conseqMap && conseqMap[c.id]) ? conseqMap[c.id] : null;
+      showChoiceResult(()=> conseq ? TXT(conseq.zh, conseq.en) : '', opts.onDone);
+    };
+    panel.appendChild(b);
+  });
+  G._choice = { pick:(id)=>{ if(handlers[id]) handlers[id](); } };
+}
+
+// 应用选项 effects + 捕获标记键 + 知识点卡片
+function applyChoiceEffects(c, opts){
+  applyEffects(c.effects);
+  const f = G.flags;
+  if(c.collude) f.collude = true;
+  if(c.justiceEnding) f.justice = true;
+  if(c.dominoRisk){ f.dominoRisk = true; G.dominoChainActive = true;
+    // 多米诺连锁：担保触发 → 你被扣¥2,000、信用受损（关联 NPC 收入减半的叙事落点）
+    changeStatus('coins', -2000); changeStatus('credit', -10);
+  }
+  if(c.moralHazard) f.moralHazard = true;
+  if(c.priorityKill) f.priorityKill = true;
+  if(c.isGroupVote) G.playerVoteWeight = 1;   // v1.0：isGroupVote 仅作剧情/标记语义，不改变票权
+  if(c.markedBy){ G.marks.push({ by:c.markedBy, round:(c.markedRound||(G.round+1)), deep:!!c.markedDeep }); }
+  if(c.markedDeep && !c.markedBy){ G.marks.push({ by:0, round:G.round+1, deep:true }); }
+  // 举报/揭穿计数（知识点为 k_whistleblowing 且非 C 私下谈判）
+  if(c.knowledge==='k_whistleblowing' && c.id!=='C'){ f.exposed = true; G.reportCount++; }
+  if(opts && opts.round && opts.round.round===6 && c.id==='D'){ f.stayedSafe = true; }
+  if(c.knowledge) showKnowledgeCard(c.knowledge);
+}
+
+// 应用 9 键 effects（含隐藏 liability），忽略 riskNote / note 等非状态键
+function applyEffects(eff){
+  if(!eff) return;
+  ['coins','savings','energy','credit','social','academics','literacy','survival','liability'].forEach(k=>{
+    const v = eff[k];
+    if(typeof v === 'number' && v !== 0) changeStatus(k, v);
+  });
+}
+
+// 知识点卡片弹窗（双语，可关闭，非阻塞）。Bug3：从「请求卡所属主题」的子池中随机抽取，
+// 按本局 Fisher-Yates 洗牌顺序取首个未用卡——每局序列不同、防玩家背答案；主题一致保证内容相关。
+function showKnowledgeCard(key){
+  const pool = (typeof knowledgeCards !== 'undefined') ? Object.keys(knowledgeCards) : [];
+  const theme = KTHEME[key];
+  let cand = pool.filter(k=> theme && KTHEME[k]===theme && !(G.kUsed && G.kUsed[theme] && G.kUsed[theme].indexOf(k) >= 0));
+  if(cand.length === 0){ if(G.kUsed) G.kUsed[theme] = []; cand = pool.filter(k=> theme && KTHEME[k]===theme); }
+  const ordered = ((G.kShuffle && G.kShuffle.length) ? G.kShuffle : pool.slice()).filter(k=> cand.indexOf(k) >= 0);
+  const pickKey = ordered.length ? ordered[0] : (cand.length ? cand[0] : key);
+  if(G.kUsed && theme) (G.kUsed[theme] = G.kUsed[theme] || []).push(pickKey);
+  const card = (typeof knowledgeCards !== 'undefined') ? knowledgeCards[pickKey] : null;
+  const panel = document.getElementById('knowledge-panel');
+  if(!card){ panel.classList.remove('show'); return; }
+  panel.innerHTML = '';
+  const box = document.createElement('div'); box.className='k-card';
+  const theory = card.related_theory || { zh:'', en:'' };
+  box.innerHTML = `<h2>${TXT(card.title.zh, card.title.en)}</h2>
+    <div class="k-content">${TXT(card.content.zh, card.content.en)}</div>
+    <div class="k-theory"><b>${t('knowledgeTitle')}：</b>${TXT(theory.zh, theory.en)}</div>`;
+  const close = document.createElement('button'); close.className='k-close';
+  close.textContent = t('knowledgeClose');
+  close.onclick = ()=> panel.classList.remove('show');
+  box.appendChild(close);
+  panel.appendChild(box);
+  panel.classList.add('show');
+  G._knowledgeKey = pickKey;   // 记录实际展示的卡（语言切换重渲染用）
+}
+
+// 展示选项后果 + 继续按钮（htmlFn 返回双语 HTML，语言切换时可重渲染）
+function showChoiceResult(htmlFn, onDone){
+  G._lastResult = { htmlFn, onDone };
+  renderChoiceResult();
+}
+// 重渲染结果面板（语言切换 / 重新展示时调用）
+function renderChoiceResult(){
+  if(!G._lastResult) return;
+  const panel = document.getElementById('choice-panel');
+  panel.classList.add('show'); panel.innerHTML = '';
+  const r = document.createElement('div'); r.className='cp-result'; r.innerHTML = G._lastResult.htmlFn();
+  panel.appendChild(r);
+  const cont = document.createElement('button'); cont.className='cp-submit'; cont.textContent = t('continueBtn');
+  cont.onclick = ()=>{ panel.classList.remove('show'); if(G._lastResult.onDone) G._lastResult.onDone(); };
+  panel.appendChild(cont);
+  G._choice = { cont: ()=>cont.onclick() };
+}
+
+// 第6-2 自动结算（netWorth = coins - liability，S/A/B/C/D 评级）
+function presentAutoCalc(sub, onDone){
+  G.phase='DAY'; renderTopbar();
+  const st = G.playerStatus;
+  const net = st.coins - st.liability;
+  const health = Math.max(0, Math.round((net/3000)*100));
+  let grade = 'D';
+  if(net>10000 && st.literacy>90) grade='S';
+  else if(net>5000 && st.literacy>70) grade='A';
+  else if(net>0 && st.literacy>50) grade='B';
+  else if(net<0 || st.liability>3000) grade='C';
+  else grade='D';
+  const c = sub.consequences[grade];
+  const html = `<b>${t('gradeTitle')}</b><br>
+    ${t('netWorth')}：${money(net)}　${t('literacyScore')}：${st.literacy}　${t('healthLabel')}：${health}%<br>
+    <b>${t('gradeLabel')}：${grade}</b><br>${TXT(c.zh, c.en)}`;
+  showChoiceResult(()=>html, onDone);
+}
+
+/* ---------- 12.4 投票阶段 ---------- */
+function enterVote(skipUndo){
+  G.phase = 'VOTE'; renderTopbar();
+  if(G.playerDead){
+    // 玩家已出局：仅 NPC 投票
+    logB(B('你已出局，作为旁观者观战', 'You are out — spectating'));
+    resolveVotes(null); return;
+  }
+  // 防御守卫：若场上存活人数 ≤ 1，无候选可投，直接结算（避免空候选软锁死）。
+  // v0.6：实际的屠边胜负判定统一在 settle() 内 checkWinCondition() 执行，
+  // 此处仅做"进入投票前"的空候选兜底。
+  if(aliveSeats().length <= 1){ settle(); return; }
+  G.pkTied = null;
+  const panel = document.getElementById('vote-panel');
+  const hint = document.getElementById('vote-hint');
+  document.getElementById('vp-tip').textContent = t('vpTip');
+  hint.style.display = 'none';   // 提示已由 vp-tip 呈现，避免重复遮挡
+  panel.classList.add('show');
+  // 记录当前面板回调（点击与自动化测试共用）
+  G._onPick = (targetId)=>{
+    panel.classList.remove('show'); hint.style.display = 'none';
+    resolveVotes(targetId);
+  };
+  if(!skipUndo) pushUndo({ type:'vote' });
+  renderStage(true, (targetId)=>{ if(G._onPick) G._onPick(targetId); });
+}
+
+/* ---------- 12.5 收集并统计票数（玩家 + NPC AI） ---------- */
+function resolveVotes(playerTarget){
+  // v0.6：移除 G.hunterGunUsed 的局内复位（该复位是 v0.5.3 猎人重复触发的根因）；
+  // 猎人开枪标记仅开局置 false，开枪/放弃后置 true 后永不再复位。
+  const alive = aliveSeats();
+  if(alive.length <= 1){ settle(); return; } // 仅剩 1 人，直接结算判定胜负（避免空候选崩溃）
+  const votes = {}; // targetId -> count
+  const addVote = (tid)=>{ if(tid!=null) votes[tid] = (votes[tid]||0)+1; };
+
+  // 玩家票：固定 1 票（v1.0 carryover 修复，isGroupVote 不再影响票权）
+  if(playerTarget){ addVote(playerTarget); }
+
+  const wolves = alive.filter(s=>s.faction==='wolf');
+  const nonWolves = alive.filter(s=>s.faction!=='wolf');
+
+  // 镇民共识：每轮讨论形成一名"可疑对象"（P0 无真实线索，按概率偏向真狼，模拟朴素讨论）
+  let townSuspect = null;
+  if(nonWolves.length>0){
+    if(wolves.length>0 && Math.random() < BAL.townCorrect){
+      townSuspect = pick(wolves).char.id;        // 讨论碰巧指向真狼
+    } else {
+      townSuspect = pick(nonWolves).char.id;      // 讨论误伤好人
+    }
+  }
+  // 好人民主跟随共识（玩家除外，玩家自由判断）；
+  // 若存在预言家已确认的狼人，镇民以高概率相信并集中投该狼（模拟"跳预言家"后的舆论一致）
+  const knownAlive = G.knownWolves.map(id=>seatById(id)).filter(s=>s && s.alive);
+  alive.filter(s=>s.faction!=='wolf' && !s.isPlayer).forEach(s=>{
+    const cands = alive.filter(t=>t.char.id!==s.char.id);
+    if(knownAlive.length>0 && Math.random() < 0.92){
+      addVote(pick(knownAlive).char.id);
+    } else if(townSuspect && townSuspect!==s.char.id && Math.random() < BAL.townFollow){
+      addVote(townSuspect);
+    } else {
+      addVote(pick(cands).char.id);
+    }
+  });
+  // 狼人协同：共同投一名非狼（优先神民 / 玩家）
+  if(wolves.length>0 && nonWolves.length>0){
+    const prefer = nonWolves.filter(s=>s.faction==='god' || s.isPlayer);
+    const wt = (prefer.length>0 ? pick(prefer) : pick(nonWolves));
+    wolves.forEach(w=> addVote(wt.char.id));
+  }
+
+  // 计票：最高票淘汰；平票进入 PK
+  let max = 0; Object.values(votes).forEach(v=> max=Math.max(max,v));
+  const topIds = Object.keys(votes).filter(k=>votes[k]===max);
+  G.voteOutId = null;
+  if(topIds.length===1 && max>0){
+    G.voteOutId = parseInt(topIds[0],10);
+  } else if(topIds.length > 1 && max>0){
+    enterPK(topIds.map(Number)); // 平票 → PK 加时投票
+    return;
+  }
+
+  G.dialogQueue = [];
+  if(G.voteOutId){
+    announceVoteOut(G.voteOutId);
+  } else {
+    say(null, B('本轮平票，本轮无人出局。', 'Tie — no one eliminated this round.'));
+    logB(B('投票：平票，本轮无人出局', 'Vote: Tie — no one eliminated'), { cls:'h-event', bold:true });
+  }
+  // 玩家猎人被票出 → 开枪 UI（打断，回调后结算）；否则正常结算
+  if(!proceedAfterElimination()) playDialogQueue(()=> settle());
+}
+
+// 播报投票出局 + 遗言 + 击杀（含猎人连锁）
+function announceVoteOut(id){
+  const v = seatById(id);
+  const nb = npcNameB(v.char.id);
+  const slZh = v.char.id+'号', slEn = ''+v.char.id;
+  say(null, B(`投票结束，${slZh} ${nb.zh} 以最高票被投出局！`, `The votes are counted. ${slEn} ${nb.en} is voted out!`));
+  logB(B(`投票：${slZh} ${nb.zh} ${tB('eliminated').zh}（最高票）`, `Vote: ${slEn} ${nb.en} ${tB('eliminated').en} (top vote)`), { cls:'h-event', bold:true });
+  // 遗言（被投出者发言）—— 取自 A2 台词库 lines.eliminatedVote，缺失则回退通用台词
+  const lw = (NPC_BY_ID[id] && NPC_BY_ID[id].lines && NPC_BY_ID[id].lines.eliminatedVote && NPC_BY_ID[id].lines.eliminatedVote[0]);
+  say(id, lw || B('我……我真的不是狼人……', "I… I wasn't the wolf…"));
+  // 击杀（触发猎人连锁；玩家猎人的开枪 UI 由调用方在结算前处理）
+  killSeat(id, 'vote');
+  renderStage();
+}
+
+/* ---------- 12.5b PK 加时投票（平票时进入） ---------- */
+function enterPK(tiedIds, skipUndo){
+  G.phase = 'PK'; renderTopbar();
+  G.pkTied = tiedIds;
+  // 防御：若平票者均已出局 / 不存在，无法进入 PK，直接结算
+  const aliveTied = tiedIds.map(id=>seatById(id)).filter(x=>x && x.alive && !x.isPlayer);
+  if(aliveTied.length === 0){ settle(); return; }
+  G.dialogQueue = [];
+  const zhIds = tiedIds.map(i=>i+'号').join('、');
+  const enIds = tiedIds.join(', ');
+  const playerSeat = G.seats.find(s=>s.isPlayer);
+  const playerInPK = !!(playerSeat && playerSeat.alive && tiedIds.includes(playerSeat.char.id));
+  // 1) 主持人公告：进入 PK，每人一次发言机会
+  say(null, B(`出现平票！${zhIds} 进入 PK，每人有一次发言机会。`, `Tie vote! ${enIds} are tied — each gets one PK statement.`));
+  // 2) PK 发言阶段：平票者依次发言（NPC 用台词库 pkSpeech，玩家在 PK 中自动发言）
+  tiedIds.forEach(id=>{
+    const s = seatById(id);
+    if(s && s.alive){
+      if(s.isPlayer){
+        say(id, B('我请在座的各位再想想——把我投出去，你们就少了一双眼睛，真正的狼人正在偷笑。',
+                   "I ask everyone to think again — vote me out and you lose a pair of eyes; the real wolf is laughing."));
+      } else {
+        const pkLine = (NPC_BY_ID[id] && NPC_BY_ID[id].lines && NPC_BY_ID[id].lines.pkSpeech && NPC_BY_ID[id].lines.pkSpeech[0]);
+        say(id, pkLine || B('我？我是好人！投我你们就中了狼人的圈套。', "Me? I'm a good citizen! Voting me plays right into the wolves' hands."));
+      }
+    }
+  });
+  playDialogQueue(()=>{
+    // 3) 主持人公告：PK 发言结束，请除平票者外的玩家重新投票
+    G.dialogQueue = [];
+    say(null, B(`PK 发言结束，请除 ${zhIds} 外的玩家重新投票。`, `PK statements done — everyone except ${enIds} re-votes now.`));
+    if(G.playerDead || playerInPK){
+      // 玩家已出局 或 玩家是 PK 候选人（候选人不投票）→ 仅由其余 NPC 重新投票
+      if(G.playerDead) logB(B('你已出局，旁观 PK 重新投票', 'You are out — watching the PK revote'));
+      else logB(B('你是 PK 候选人，本环节不投票', 'You are a PK candidate — you abstain this vote'));
+      playDialogQueue(()=> resolvePK(tiedIds, null));
+    } else {
+      // 玩家不是 PK 候选人 → 在候选人中投出一票
+      const panel = document.getElementById('vote-panel');
+      const hint = document.getElementById('vote-hint');
+      document.getElementById('vp-tip').textContent = TXT('PK：在平票者中选择一人投出', 'PK: choose one of the tied to eliminate');
+      hint.style.display = 'none';   // 提示已由 vp-tip 呈现，避免重复遮挡
+      panel.classList.add('show');
+      G._onPick = (targetId)=>{
+        panel.classList.remove('show'); hint.style.display = 'none';
+        resolvePK(tiedIds, targetId);
+      };
+      if(!skipUndo) pushUndo({ type:'pk', tiedIds });
+      renderStagePK(tiedIds);
+    }
+  });
+}
+// PK 仅平票者可选
+function renderStagePK(tiedIds){
+  const stage = document.getElementById('stage');
+  stage.innerHTML = '';
+  const playerSeat = G.seats.find(s=>s.isPlayer);
+  const playerIsWolf = !!(playerSeat && playerSeat.faction==='wolf');
+  const tableSeats = buildTableSeats();
+  let seatNum = 0;
+  tableSeats.forEach((s, idx)=>{
+    if(s.isHost){
+      const hostDiv = document.createElement('div');
+      hostDiv.className = 'seat host-seat pk-dim';
+      hostDiv.setAttribute('data-id', '0');
+      hostDiv.setAttribute('data-seat', 'host');
+      const p = seatPointByIndex(idx);
+      hostDiv.style.left = p[0]; hostDiv.style.top = p[1];
+      const hi = document.createElement('img'); hi.className='seat-avatar avatar'; hi.src=asset('characters/portrait_host.png'); imgFallback(hi);
+      const hn = document.createElement('div'); hn.className='seat-no'; hn.textContent=(LANG==='en'?'Host':'法官');
+      const hm = document.createElement('div'); hm.className='seat-name'; hm.textContent=(LANG==='en'?'Host Sprite':'主持人小精灵');
+      hostDiv.appendChild(hi); hostDiv.appendChild(hn); hostDiv.appendChild(hm);
+      applySeatVisualMarks(hostDiv, s, playerIsWolf);
+      stage.appendChild(hostDiv);
+      return;
+    }
+    seatNum += 1;
+    const selectable = s.alive && tiedIds.includes(s.char.id) && !s.isPlayer;
+    const div = document.createElement('div');
+    div.className = seatDomBaseClass(s, selectable) + (selectable ? ' pk-candidate' : ' pk-dim');
+    div.setAttribute('data-id', s.char.id);
+    div.setAttribute('data-seat', String(seatNum));
+    const pos = seatPointByIndex(idx);
+    div.style.left = pos[0];
+    div.style.top = pos[1];
+
+    const img = document.createElement('img');
+    img.className = 'seat-avatar avatar';
+    img.src = asset('characters/'+s.char.portrait);
+    imgFallback(img);
+    div.appendChild(img);
+
+    const no = document.createElement('div'); no.className='seat-no'; no.textContent = s.char.id + (LANG==='en'?'':'号');
+    const nm = document.createElement('div'); nm.className='seat-name'; nm.textContent = npcName(s.char.id);
+    const tg = document.createElement('div'); tg.className='seat-tag'; tg.textContent = npcTag(s.char.id);
+    div.appendChild(no); div.appendChild(nm); div.appendChild(tg);
+
+    applySeatVisualMarks(div, s, playerIsWolf);
+
+    if(selectable){ div.onclick = ()=>{ if(G._onPick) G._onPick(s.char.id); }; }
+    stage.appendChild(div);
+  });
+}
+function resolvePK(tiedIds, playerTarget){
+  // v0.6：移除 G.hunterGunUsed 局内复位（理由同 resolveVotes）。
+  const alive = aliveSeats();
+  const validTied = tiedIds.map(id=>seatById(id)).filter(x=>x && x.alive && !x.isPlayer);
+  if(validTied.length === 0){ settle(); return; } // 平票者均已出局，直接结算
+  const votes = {};
+  const addVote = (tid)=>{ if(tid!=null) votes[tid] = (votes[tid]||0)+1; };
+  if(playerTarget && validTied.some(x=>x.char.id===playerTarget)) addVote(playerTarget);
+  // NPC 仅在「非平票候选人」的好人/狼中投票；平票候选人本人不参与投票（PK 规则：候选人弃权）。
+  alive.filter(s=>!s.isPlayer && !tiedIds.includes(s.char.id)).forEach(s=>{
+    const cands = validTied.filter(x=>x.char.id!==s.char.id);
+    if(cands.length===0) return;
+    if(s.faction==='wolf'){
+      const goodC = cands.filter(x=>x.faction!=='wolf');
+      addVote((goodC.length ? pick(goodC) : pick(cands)).char.id);
+    } else {
+      addVote(pick(cands).char.id);
+    }
+  });
+  let max = 0; Object.values(votes).forEach(v=> max=Math.max(max,v));
+  const top = Object.keys(votes).filter(k=>votes[k]===max);
+  G.voteOutId = null;
+  G.dialogQueue = [];
+  if(top.length===1 && max>0){
+    G.voteOutId = parseInt(top[0],10);
+    announceVoteOut(G.voteOutId);
+  } else {
+    say(null, B('PK 再次平票，本轮无人出局。', 'PK tie again — no one eliminated.'));
+    logB(B('PK：'+tB('pkTie').zh, 'PK: '+tB('pkTie').en), { cls:'h-event', bold:true });
+  }
+  // 玩家猎人被 PK 出 → 开枪 UI（打断，回调后结算）；否则正常结算
+  if(!proceedAfterElimination()) playDialogQueue(()=> settle());
+}
+
+/* ---------- 12.6 结算阶段：揭示身份 + 财务 + 7 结局判定 ---------- */
+function settle(){
+  G.phase = 'SETTLE';
+  renderTopbar();
+  G.dialogQueue = [];
+
+  // 揭示本轮出局 / 遇害者身份
+  [G.voteOutId, G.nightKillId].forEach(id=>{
+    if(id){
+      const v = seatById(id);
+      if(v){
+        const fZh = v.faction==='wolf' ? tB('revealWolf').zh : v.faction==='god' ? tB('revealGod').zh : tB('revealVillager').zh;
+        const fEn = v.faction==='wolf' ? tB('revealWolf').en : v.faction==='god' ? tB('revealGod').en : tB('revealVillager').en;
+        const nb = npcNameB(v.char.id);
+        const slZh = v.char.id+'号', slEn = ''+v.char.id;
+        say(null, B(`${slZh} ${nb.zh} 的身份是：${fZh}。`, `${slEn} ${nb.en} was a ${fEn}.`));
+      }
+    }
+  });
+
+  // 财务：每轮生活费 -¥500（统一走 changeStatus）；v0.8 P0-1：玩家已出局 → 8 键状态栏冻结，不再扣生活费
+  if(!G.playerDead){
+    changeStatus('coins', -500, 'living');
+    logB(B('生活费：-'+money(500)+'（剩 '+money(G.playerStatus.coins)+'，负债 '+money(G.playerStatus.liability)+'）',
+            'Living cost: -'+money(500)+' (Left '+money(G.playerStatus.coins)+', Debt '+money(G.playerStatus.liability)+')'), { cls:'h-event', bold:true });
+  }
+
+  playDialogQueue(()=>{
+    // 破产优先判定（提前结束）：coins<0 且 liability>5000
+    if(G.playerStatus.coins < BANKRUPT.coinsBelow && G.playerStatus.liability > BANKRUPT.liabilityAbove){
+      G.goodWon = false; endGame('bankrupt'); return;
+    }
+    // v0.6：每轮白天投票结算后立即执行胜负判定（屠边规则），不再拖延到 6 轮。
+    const win = checkWinCondition();
+    if(win === 'GOOD'){ G.goodWon = true; evaluateFinalEnding(true); return; }   // 狼人全灭 → 好人胜
+    if(win === 'WOLF'){ G.goodWon = false; evaluateFinalEnding(false); return; }  // 神/民被屠边 → 狼人胜
+    if(win === 'END'){ // 场上≤1人：按存活者阵营判定胜负
+      const last = aliveSeats()[0];
+      const good = !last || last.faction !== 'wolf';
+      G.goodWon = good; evaluateFinalEnding(good); return;
+    }
+    // 未分胜负：进入下一轮（封顶 6 轮，避免无限循环）
+    if(G.round >= G.maxRound){
+      // 6 轮耗尽仍无屠边：以「狼人未全灭」为默认（玩家个人结局由财务/标记决定）
+      G.goodWon = false; evaluateFinalEnding(false); return;
+    }
+    G.round += 1;
+    renderTopbar();
+    beginRound();
+  });
+}
+
+// v0.6：7 结局判定（按 endingsData 的 8 键 + 隐藏 liability + 标记键 + 胜负 + 玩家存活）。
+// 设计原则（对照 endings_data.js 的 condition 字段语义）：
+//   1) 破产已在 settle() 提前判定（coins<0 && liability>5000），此处只处理其余 7 结局。
+//   2) collude（接受利诱/封口费）→ 被狼同化（失败，最高优先）。
+//   3) dominoRisk 且连锁成立 → 多米诺崩塌（失败）。
+//   4) 玩家出局 → 个人故事线以失败收场，绝不映射「孤独幸存者」（孤独幸存者须玩家存活），给失败结局。
+//   5) 玩家存活 + 好人胜(goodWon) → 三个胜利结局之一（按财务/道德表现细分，兜底知识守护者）。
+//   6) 玩家存活 + 狼人胜(屠边) → 孤独幸存者（明哲保身：social<40 且 非正义）或失败兜底（被狼同化）。
+//   保证 7 结局 + 破产全部可达（自测 verifyEndingsReachable 强制各状态验证）。
+function evaluateFinalEnding(goodWon){
+  const st = G.playerStatus;
+  const net = st.coins - st.liability;
+  const f = G.flags;
+  let endingId;
+  // 1) 利诱/封口 → 被狼同化
+  if(f.collude) endingId = 'assimilated';
+  // 2) 多米诺担保连锁 → 崩塌
+  else if(f.dominoRisk && G.dominoChainActive) endingId = 'domino_collapse';
+  // 3) 玩家已出局：个人结局为失败（绝不给孤独幸存者），兜底被狼同化
+  else if(G.playerDead) endingId = 'assimilated';
+  // 4) 玩家存活 + 好人阵营胜利 → 胜利结局
+  else if(goodWon){
+    if(G.reportCount>=2 && st.literacy>80 && st.social>=6) endingId = 'community_hero';
+    else if(net>10000 && st.liability===0) endingId = 'financial_freedom';
+    else if(st.literacy>80 && f.exposed) endingId = 'knowledge_guardian';
+    else endingId = 'knowledge_guardian';   // 胜利兜底：守住了本心与好人阵营
+  }
+  // 5) 玩家存活 + 狼人阵营胜利（屠边）→ 孤独幸存者（明哲保身）或失败兜底
+  else {
+    if(st.social<40 && !f.justice) endingId = 'lone_survivor';
+    else endingId = 'assimilated';
+  }
+  endGame(endingId);
+}
+
+/* ---------- 12.7 游戏结束（7 结局） ---------- */
+function endGame(endingId){
+  updateCtrlLabels(); // 确保「再来一局」等按钮按当前语言显示
+  const panel = document.getElementById('end-panel');
+  const title = document.getElementById('end-title');
+  const detail = document.getElementById('end-detail');
+  G.result = endingId; // 结局 id，供测试/统计读取
+  const ed = (typeof endingsData !== 'undefined') ? endingsData[endingId] : null;
+  panel.classList.remove('hidden');
+  if(ed){
+    title.textContent = TXT(ed.title.zh, ed.title.en);
+    const ach = ed.unlocked_achievement ? TXT(ed.unlocked_achievement.zh, ed.unlocked_achievement.en) : '';
+    const rq  = ed.reflection_question ? TXT(ed.reflection_question.zh, ed.reflection_question.en) : '';
+    // v0.6：胜负横幅（破产结局不显示阵营胜负，其叙事自带结局含义）
+    let banner = '';
+    if(endingId !== 'bankrupt'){
+      const won = !!G.goodWon;
+      const label = won ? t('winGood') : t('winWolf');
+      const desc  = won ? t('goodWinDesc') : t('wolfWinDesc');
+      banner = `<p class="end-banner ${won?'win':'lose'}"><b>${label}</b>　${desc}</p>`;
+    }
+    // 逐行小头像花名册（P1-1）
+    const roster = G.seats.map(s=>{
+      const fct = s.faction==='wolf'?t('revealWolf'):s.faction==='god'?t('revealGod'):t('revealVillager');
+      const status = s.alive ? ('<span class="r-alive">'+TXT('存活','Alive')+'</span>') : ('<span class="r-out">'+TXT('出局','Out')+'</span>');
+      return `<div class="r-line${s.alive?'':' dead'}${s.isPlayer?' player-row':''}">`+
+             `<img class="r-avatar" src="${asset('characters/'+s.char.portrait)}" alt="">`+
+             `<span class="r-name">${seatLabel(s.char.id)} ${npcName(s.char.id)}</span>`+
+             `<span style="color:#5a3a1a">${fct}</span>`+ status + `</div>`;
+    }).join('');
+    detail.innerHTML =
+      banner +
+      `<p>${TXT(ed.narrative.zh, ed.narrative.en)}</p>` +
+      `<p><span class="end-ach"><span class="ach-ico">🏅</span>${ach}</span></p>` +
+      `<p style="color:#8a2b00"><b>${t('reflectionLabel')}：</b>${rq}</p>` +
+      `<div class="end-roster">${roster}</div>`;
+  } else {
+    title.textContent = TXT('游戏结束','Game Over');
+    detail.innerHTML = `<p>${TXT('本局结束。','This round is over.')}</p>`;
+  }
+  setScene('DAY');
+}
+
+/* ---------- 13. 双语切换（P2 将扩展正文台词） ---------- */
+function toggleLang(){
+  LANG = (LANG==='en') ? 'zh' : 'en';
+  document.documentElement.lang = (LANG==='en') ? 'en' : 'zh-CN';   // v0.8.1：驱动 :lang(en) 仅英文微调字号
+  if(!G){ renderStartLang(); return; }
+  updateCtrlLabels();
+  updateNextLabel();
+  renderTopbar();
+  renderStatusbar();
+  // P0-2：历史记录面板按当前语言整面板重渲染，杜绝中英混合
+  renderHistory();
+  // 开局身份面板进行中：按当前语言重填（角色不变，仅文案切换）
+  if(!document.getElementById('identity-panel').classList.contains('hidden')) showIdentityPanel();
+  // 当前对话框（若正在播放）即时重渲染
+  if(G._curDialogItem) renderDialogItem(G._curDialogItem, true);
+  // 投票面板进行中
+  const voting = document.getElementById('vote-panel').classList.contains('show');
+  renderStage(voting, voting ? G._onPick : null);
+  // 选择题面板 / 夜间行动面板进行中：按当前语言重建（双语即时切换）
+  const cp = document.getElementById('choice-panel');
+  if(cp.classList.contains('show')){
+    if(G._nightRebuild){ G._nightRebuild(); }                 // 夜间行动 UI（狼/预言家/女巫/猎人）
+    else if(G._lastResult) renderChoiceResult();
+    else if(G._lastChoiceCall) presentChoice(G._lastChoiceCall.choices, G._lastChoiceCall.opts, true);
+  }
+  // 知识点卡片进行中：重渲染
+  const kp = document.getElementById('knowledge-panel');
+  if(kp.classList.contains('show') && G._knowledgeKey){ showKnowledgeCard(G._knowledgeKey); }
+  // 结局面板进行中：按当前语言重建（P2-6：语言切换覆盖结局界面）
+  if(!document.getElementById('end-panel').classList.contains('hidden') && G.result){
+    endGame(G.result);
+  }
+}
+function renderStartLang(){
+  document.getElementById('start-title').textContent = t('startTitle');
+  updateCtrlLabels();
+  const desc = document.getElementById('start-desc');
+  // Bug4：移除版本号/开发信息（玩家不应看到）；标题/介绍中英双语；切英文后整界面英文。
+  if(LANG==='en'){
+    desc.innerHTML = `You are a college student caught in a campus financial storm.<br>
+      9-player game: 3 Werewolves / 3 Seers-Witches-Hunters / 3 Villagers. Discuss and vote by day, werewolves strike by night.<br>
+      6 rounds of decisions lead to your final ending.`;
+  } else {
+    desc.innerHTML = `你是一名大学生，身处校园金融风暴之中。<br>
+      9 人局：3 狼 / 3 神 / 3 民。白天讨论投票找出狼人，夜晚狼人秘密行动。<br>
+      6 轮决策，迎来你的最终结局。`;
+  }
+}
+
+/* ---------- 14. 对外暴露（供验收脚本 vm 调用） ---------- */
+window.newGameState = newGameState;
+window.assignRoles = assignRoles;
+window.presentRound = presentRound;
+window.evaluateFinalEnding = evaluateFinalEnding;
+Object.defineProperty(window, 'G', {
+  get(){ return G; },
+  set(v){ G = v; }
+});
+
+/* ---------- 15. 初始化 ---------- */
+renderStartLang();
+initHistoryScroll();
+</script>
+</body>
+</html>
