@@ -2555,23 +2555,21 @@ function evaluateFinalEnding(goodWon){
   const net = st.coins - st.liability;
   const f = G.flags;
   let endingId;
-  // 1) 利诱/封口 → 被狼同化
+  // 1) 利诱/封口 → 被狼同化（最高优先，无论胜负与是否出局）
   if(f.collude) endingId = 'assimilated';
   // 2) 多米诺担保连锁 → 崩塌
   else if(f.dominoRisk && G.dominoChainActive) endingId = 'domino_collapse';
-  // 3) 玩家已出局：个人结局为失败（绝不给孤独幸存者），兜底被狼同化
-  else if(G.playerDead) endingId = 'assimilated';
-  // 4) 玩家存活 + 好人阵营胜利 → 胜利结局
+  // 3) 好人阵营胜利 → 胜利结局（即使玩家中途出局，阵营胜利仍算胜利）
   else if(goodWon){
     if(G.reportCount>=2 && st.literacy>80 && st.social>=6) endingId = 'community_hero';
     else if(net>10000 && st.liability===0) endingId = 'financial_freedom';
     else if(st.literacy>80 && f.exposed) endingId = 'knowledge_guardian';
     else endingId = 'knowledge_guardian';   // 胜利兜底：守住了本心与好人阵营
   }
-  // 5) 玩家存活 + 狼人阵营胜利（屠边）→ 孤独幸存者（明哲保身）或失败兜底
+  // 4) 狼人阵营胜利（屠边）→ 孤独幸存者（须存活）或失败兜底
   else {
-    if(st.social<40 && !f.justice) endingId = 'lone_survivor';
-    else endingId = 'assimilated';
+    if(!G.playerDead && st.social<40 && !f.justice) endingId = 'lone_survivor';
+    else endingId = 'assimilated';   // 狼人胜 + 玩家出局/非明哲保身 → 失败兜底
   }
   endGame(endingId);
 }
