@@ -666,14 +666,10 @@
   }
   #observer-banner.show { display: block; }
 
-  /* ===================== 移动端适配（手机竖屏） ===================== */
-  @media (max-width: 768px) and (orientation: portrait) {
-    :root { --log-width: 0px; }
-
+  /* ===================== 移动端通用基础 ===================== */
+  @media (max-width: 900px) {
     html, body { overflow: hidden; position: fixed; width: 100%; height: 100%; }
     body { display: block; align-items: stretch; justify-content: stretch; }
-
-    /* 游戏画布：填满手机屏幕，不再固定宽高比 */
     #game-root {
       width: 100vw !important;
       height: 100dvh !important;
@@ -683,60 +679,65 @@
       box-shadow: none;
       border-radius: 0;
     }
+  }
 
-    /* 隐藏右侧历史记录面板（手机竖屏空间不足） */
-    #log { display: none !important; }
+  /* ===================== 手机横屏（主推体验，重点优化） ===================== */
+  @media (max-width: 920px) and (orientation: landscape) {
+    :root { --log-width: 150px; }
 
-    /* 顶部栏：缩小内边距和字体 */
+    /* 顶部栏：压缩高度 */
     #topbar {
       height: 7%;
-      padding: 0 8px;
-      font-size: clamp(10px, 3.2vw, 14px);
+      padding: 0 10px;
+      font-size: clamp(10px, 1.8vw, 13px);
     }
     #topbar .ctrl-bar { gap: 4px; }
-    .ctrl-btn { padding: 2px 6px; font-size: clamp(9px, 2.6vw, 12px); border-width: 2px; box-shadow: 0 2px 0 #5a3a1a; }
-    .pixel-btn { padding: 2px 8px; font-size: clamp(9px, 2.6vw, 12px); border-width: 2px; box-shadow: 0 2px 0 #5a3a1a; }
+    .ctrl-btn {
+      padding: 1px 6px; font-size: clamp(9px, 1.5vw, 12px);
+      border-width: 2px; box-shadow: 0 2px 0 #5a3a1a;
+    }
+    .pixel-btn {
+      padding: 1px 8px; font-size: clamp(9px, 1.5vw, 12px);
+      border-width: 2px; box-shadow: 0 2px 0 #5a3a1a;
+    }
 
-    /* 状态栏：缩小高度，8格紧凑排列 */
+    /* 状态栏：紧凑8格 */
     #statusbar {
       top: 7%;
       height: 8%;
-      padding: 3px 4px;
-      gap: 2px;
+      padding: 2px 6px;
+      gap: 3px;
     }
-    .stat-cell { font-size: clamp(8px, 2.4vw, 11px); }
-    .stat-name { font-size: clamp(8px, 2.4vw, 11px); }
-    .stat-val { font-size: clamp(8px, 2.4vw, 11px); }
+    .stat-cell { font-size: clamp(8px, 1.3vw, 11px); }
+    .stat-name { font-size: clamp(8px, 1.3vw, 11px); }
+    .stat-val { font-size: clamp(8px, 1.3vw, 11px); }
     .stat-icon { width: 12px; height: 12px; font-size: 11px; line-height: 12px; }
     .stat-bar { height: 3px; margin-top: 1px; }
-    :root:lang(en) .stat-name { font-size: clamp(7px, 2.2vw, 10px); }
+    :root:lang(en) .stat-name { font-size: clamp(7px, 1.1vw, 10px); }
 
-    /* 中央舞台：占满宽度（历史面板已隐藏） */
-    #game-table {
-      left: 0; right: 0;
-      top: 15%; bottom: 32%;
-    }
-    #vote-panel { left: 0; right: 0; top: 15%; bottom: 32%; }
-    #choice-panel { left: 0; right: 0; top: 15%; bottom: 32%; }
-    #vote-hint { top: 15%; font-size: clamp(11px, 3.4vw, 16px); }
-    #observer-banner { top: 15%; font-size: clamp(11px, 3.2vw, 15px); padding: 4px 4px; }
+    /* 中央舞台：给对话框留空间 */
+    #game-table { top: 15%; bottom: 27%; }
+    #vote-panel { top: 15%; bottom: 27%; }
+    #choice-panel { top: 15%; bottom: 27%; padding: 0.5% 1.5%; }
+    #vote-hint { top: 15%; font-size: clamp(11px, 1.8vw, 15px); padding-top: 2px; }
+    #observer-banner { top: 15%; font-size: clamp(11px, 1.7vw, 14px); padding: 3px 4px; }
 
-    /* 座位：缩小头像和文字 */
+    /* 座位：基于视口高度自适应，横屏高度有限 */
     .seat {
-      width: clamp(38px, 9vw, 52px);
+      width: clamp(34px, 8.5vh, 48px);
       padding: 1px;
       border-width: 2px;
     }
     .seat-avatar {
-      width: clamp(30px, 7.5vw, 42px);
-      height: clamp(30px, 7.5vw, 42px);
+      width: clamp(26px, 6.5vh, 40px);
+      height: clamp(26px, 6.5vh, 40px);
       border-width: 2px;
       border-radius: 4px;
     }
-    .seat-no { font-size: clamp(6px, 1.8vw, 9px); }
+    .seat-no { font-size: clamp(6px, 1.4vh, 9px); }
     .seat-name {
-      width: clamp(36px, 8.5vw, 48px);
-      font-size: clamp(5px, 1.6vw, 8px);
+      width: clamp(32px, 7.5vh, 46px);
+      font-size: clamp(5px, 1.2vh, 8px);
     }
     .seat .seat-you, .seat .seat-host {
       font-size: 7px; padding: 0 3px; border-width: 1px; top: -5px; right: -4px;
@@ -747,93 +748,242 @@
     .seat.pk-candidate::before {
       font-size: 7px; padding: 0 3px; border-width: 1px; top: -6px; left: -4px;
     }
-    .seat.dead::after { font-size: clamp(11px, 3.2vw, 15px); }
+    .seat.dead::after { font-size: clamp(10px, 2.2vh, 14px); }
     .seat .vote-badge { font-size: 8px; padding: 0 3px; border-width: 1px; }
 
-    /* 对话框：占满宽度，缩小全身像，调整高度 */
+    /* 对话框：横屏高度有限，压缩 */
+    #dialog {
+      height: clamp(78px, 25vh, 105px);
+      bottom: 1%;
+      border-width: 3px;
+    }
+    #dialog .d-portrait {
+      width: 58px; min-width: 48px;
+      border-width: 2px;
+    }
+    #dialog .d-body { padding: 3px 8px; }
+    #dialog .d-name { font-size: clamp(11px, 1.8vw, 15px); margin-bottom: 1px; }
+    #dialog .d-text {
+      width: auto; max-width: 100%;
+      font-size: clamp(10px, 1.6vw, 13px);
+      line-height: 1.35;
+    }
+    #dialog .d-next { font-size: clamp(9px, 1.4vw, 12px); right: 8px; bottom: 3px; }
+
+    /* 历史面板：窄版 */
+    #log {
+      font-size: clamp(8px, 1.2vw, 10px);
+      padding: 4px 6px;
+      line-height: 1.45;
+    }
+    #log .h-line { margin-bottom: 4px; padding-bottom: 3px; }
+
+    /* 选择题 */
+    .choice-opt {
+      width: 96%;
+      padding: 4px 10px;
+      font-size: clamp(10px, 1.5vw, 13px);
+      border-width: 2px;
+      margin: 0.25% 0;
+    }
+    .cp-title { font-size: clamp(10px, 1.6vw, 14px); margin-bottom: 0.2%; }
+    .cp-desc { font-size: clamp(9px, 1.4vw, 12px); margin-bottom: 0.5%; }
+    .cp-info { font-size: clamp(9px, 1.4vw, 12px); padding: 3px 8px; margin-bottom: 0.5%; }
+    .cp-submit { padding: 4px 16px; font-size: clamp(10px, 1.5vw, 14px); border-width: 3px; margin-top: 0.5%; }
+    .cp-result { font-size: clamp(10px, 1.5vw, 13px); padding: 6px 10px; margin: 0.5% 0; }
+
+    /* 遮罩面板 */
+    .overlay h1 { font-size: clamp(18px, 3.5vw, 30px); margin-bottom: 1.5%; }
+    .overlay p { font-size: clamp(10px, 1.7vw, 14px); max-width: 85%; margin-bottom: 2%; }
+    .overlay .big-btn { font-size: clamp(13px, 2.2vw, 19px); padding: 6px 22px; border-width: 3px; }
+    #start-panel .lang-start { font-size: clamp(15px, 2.8vw, 24px); padding: 8px 26px; border-width: 4px; }
+    #start-panel .start-lang-pick { gap: 16px; }
+
+    /* 结局 */
+    #end-panel .box { padding: 2.5% 4%; max-width: 82%; max-height: 88%; }
+    #end-panel .result-detail { font-size: clamp(10px, 1.6vw, 13px); line-height: 1.6; }
+    #end-panel .end-roster .r-line { font-size: clamp(9px, 1.4vw, 12px); gap: 6px; padding: 2px 0; }
+    #end-panel .end-roster .r-avatar { width: 30px; height: 30px; }
+    #end-panel .end-banner { font-size: clamp(9px, 1.4vw, 12px); padding: 4px 8px; margin-bottom: 4px; }
+    #end-panel .end-ach { font-size: clamp(9px, 1.4vw, 12px); padding: 3px 10px; margin: 3px 0; }
+    #end-panel .big-btn { font-size: clamp(13px, 2.2vw, 19px); padding: 6px 24px; margin-top: 8px; }
+
+    /* 身份告知 */
+    #identity-panel .id-card { padding: 3% 4%; max-width: 520px; }
+    #identity-panel .id-avatar { width: 80px; height: 80px; margin-bottom: 2%; }
+    #identity-panel .id-card h2 { font-size: clamp(14px, 2.6vw, 22px); margin-bottom: 1%; }
+    #identity-panel .id-name { font-size: clamp(12px, 2vw, 17px); margin-bottom: 0.5%; }
+    #identity-panel .id-role { font-size: clamp(11px, 1.9vw, 16px); margin-bottom: 1.5%; }
+    #identity-panel .id-skill { font-size: clamp(10px, 1.6vw, 13px); padding: 1.5% 2.5%; margin-bottom: 2%; }
+    #identity-panel .id-guide { font-size: clamp(9px, 1.4vw, 12px); padding-top: 4px; margin-bottom: 2%; }
+
+    /* 知识点卡片 */
+    #knowledge-panel .k-card { padding: 2.5% 4%; max-width: 580px; }
+    #knowledge-panel .k-card h2 { font-size: clamp(13px, 2.2vw, 20px); margin-bottom: 1.5%; }
+    #knowledge-panel .k-card .k-content { font-size: clamp(10px, 1.6vw, 14px); margin-bottom: 1.5%; }
+    #knowledge-panel .k-card .k-theory { font-size: clamp(9px, 1.4vw, 12px); padding: 1.5% 2.5%; }
+
+    /* 确认弹窗 */
+    #confirm-modal .cm-box { padding: 3% 4%; max-width: 400px; }
+    #confirm-modal .cm-box p { font-size: clamp(11px, 1.8vw, 15px); margin-bottom: 3%; }
+    #confirm-modal .cm-row { gap: 10px; }
+  }
+
+  /* ===================== 手机竖屏（兼容模式，建议横屏） ===================== */
+  @media (max-width: 600px) and (orientation: portrait) {
+    :root { --log-width: 0px; }
+
+    /* 竖屏提示条 */
+    #game-root::before {
+      content: "📱 建议横屏体验更佳 / Rotate for better experience";
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      background: #e63946;
+      color: #fff;
+      font-size: 11px;
+      text-align: center;
+      padding: 3px 8px;
+      z-index: 100;
+      font-weight: bold;
+      letter-spacing: 0.5px;
+    }
+
+    /* 隐藏历史面板 */
+    #log { display: none !important; }
+
+    /* 顶部栏：给提示条让位 */
+    #topbar {
+      top: 22px;
+      height: 6.5%;
+      padding: 0 8px;
+      font-size: clamp(10px, 3vw, 13px);
+    }
+    #topbar .ctrl-bar { gap: 3px; }
+    .ctrl-btn { padding: 1px 5px; font-size: clamp(8px, 2.4vw, 11px); border-width: 2px; box-shadow: 0 2px 0 #5a3a1a; }
+    .pixel-btn { padding: 1px 7px; font-size: clamp(8px, 2.4vw, 11px); border-width: 2px; box-shadow: 0 2px 0 #5a3a1a; }
+
+    /* 状态栏 */
+    #statusbar {
+      top: calc(22px + 6.5%);
+      height: 7.5%;
+      padding: 2px 4px;
+      gap: 2px;
+    }
+    .stat-cell { font-size: clamp(7px, 2.2vw, 10px); }
+    .stat-name { font-size: clamp(7px, 2.2vw, 10px); }
+    .stat-val { font-size: clamp(7px, 2.2vw, 10px); }
+    .stat-icon { width: 11px; height: 11px; font-size: 10px; line-height: 11px; }
+    .stat-bar { height: 2px; margin-top: 1px; }
+    :root:lang(en) .stat-name { font-size: clamp(6px, 2vw, 9px); }
+
+    /* 中央舞台 */
+    #game-table {
+      left: 0; right: 0;
+      top: calc(22px + 14%);
+      bottom: 30%;
+    }
+    #vote-panel { left: 0; right: 0; top: calc(22px + 14%); bottom: 30%; }
+    #choice-panel { left: 0; right: 0; top: calc(22px + 14%); bottom: 30%; }
+    #vote-hint { top: calc(22px + 14%); font-size: clamp(10px, 3vw, 14px); }
+    #observer-banner { top: calc(22px + 14%); font-size: clamp(10px, 2.8vw, 13px); padding: 3px 4px; }
+
+    /* 座位：竖屏窄，头像偏小 */
+    .seat {
+      width: clamp(34px, 8.5vw, 46px);
+      padding: 1px;
+      border-width: 2px;
+    }
+    .seat-avatar {
+      width: clamp(27px, 6.8vw, 38px);
+      height: clamp(27px, 6.8vw, 38px);
+      border-width: 2px;
+      border-radius: 4px;
+    }
+    .seat-no { font-size: clamp(5px, 1.6vw, 8px); }
+    .seat-name {
+      width: clamp(32px, 8vw, 44px);
+      font-size: clamp(5px, 1.4vw, 7px);
+    }
+    .seat .seat-you, .seat .seat-host {
+      font-size: 6px; padding: 0 2px; border-width: 1px; top: -4px; right: -3px;
+    }
+    .seat.wolf-partner .wolf-badge {
+      font-size: 6px; padding: 0 2px; border-width: 1px; top: -4px; right: -3px;
+    }
+    .seat.pk-candidate::before {
+      font-size: 6px; padding: 0 2px; border-width: 1px; top: -5px; left: -3px;
+    }
+    .seat.dead::after { font-size: clamp(10px, 2.8vw, 14px); }
+    .seat .vote-badge { font-size: 7px; padding: 0 2px; border-width: 1px; }
+
+    /* 对话框 */
     #dialog {
       left: 0; right: 0;
       bottom: 0;
-      height: clamp(100px, 28vh, 160px);
+      height: clamp(90px, 26vh, 140px);
       border-width: 3px;
       border-radius: 8px 8px 0 0;
     }
     #dialog .d-portrait {
-      width: 60px; min-width: 50px;
+      width: 52px; min-width: 44px;
       border-width: 2px;
     }
-    #dialog .d-body { padding: 4px 8px; }
-    #dialog .d-name { font-size: clamp(12px, 3.6vw, 16px); }
+    #dialog .d-body { padding: 3px 8px; }
+    #dialog .d-name { font-size: clamp(11px, 3.2vw, 15px); }
     #dialog .d-text {
       width: auto; max-width: 100%;
-      font-size: clamp(11px, 3.2vw, 15px);
-      line-height: 1.4;
+      font-size: clamp(10px, 2.8vw, 14px);
+      line-height: 1.35;
     }
-    #dialog .d-next { font-size: clamp(10px, 2.8vw, 14px); right: 8px; bottom: 4px; }
+    #dialog .d-next { font-size: clamp(9px, 2.6vw, 13px); right: 8px; bottom: 3px; }
 
-    /* 选择题选项：手机上更紧凑 */
+    /* 选择题 */
     .choice-opt {
       width: 96%;
-      padding: 6px 10px;
-      font-size: clamp(11px, 3vw, 14px);
+      padding: 5px 10px;
+      font-size: clamp(10px, 2.8vw, 13px);
       border-width: 2px;
     }
-    .cp-title { font-size: clamp(11px, 3.2vw, 15px); }
-    .cp-desc { font-size: clamp(10px, 2.8vw, 13px); }
-    .cp-info { font-size: clamp(10px, 2.8vw, 13px); padding: 4px 8px; }
-    .cp-submit { padding: 6px 18px; font-size: clamp(11px, 3vw, 15px); border-width: 3px; }
-    .cp-result { font-size: clamp(11px, 3vw, 14px); padding: 8px 12px; }
+    .cp-title { font-size: clamp(10px, 3vw, 14px); }
+    .cp-desc { font-size: clamp(9px, 2.6vw, 12px); }
+    .cp-info { font-size: clamp(9px, 2.6vw, 12px); padding: 3px 8px; }
+    .cp-submit { padding: 5px 16px; font-size: clamp(10px, 2.8vw, 14px); border-width: 3px; }
+    .cp-result { font-size: clamp(10px, 2.8vw, 13px); padding: 6px 10px; }
 
-    /* 起始/结束遮罩：手机上调整 */
-    .overlay h1 { font-size: clamp(20px, 6vw, 32px); }
-    .overlay p { font-size: clamp(11px, 3.2vw, 15px); max-width: 92%; }
-    .overlay .big-btn { font-size: clamp(14px, 4vw, 20px); padding: 8px 22px; border-width: 3px; }
-    #start-panel .lang-start { font-size: clamp(16px, 4.8vw, 24px); padding: 10px 28px; border-width: 4px; }
-    #start-panel .start-lang-pick { gap: 12px; }
+    /* 遮罩面板 */
+    .overlay { padding-top: 30px; }
+    .overlay h1 { font-size: clamp(18px, 5.5vw, 28px); }
+    .overlay p { font-size: clamp(10px, 3vw, 14px); max-width: 92%; }
+    .overlay .big-btn { font-size: clamp(13px, 3.8vw, 18px); padding: 7px 20px; border-width: 3px; }
+    #start-panel .lang-start { font-size: clamp(14px, 4.4vw, 22px); padding: 9px 24px; border-width: 4px; }
+    #start-panel .start-lang-pick { gap: 10px; }
 
-    /* 结局面板 */
-    #end-panel .box { padding: 4% 5%; max-width: 94%; }
-    #end-panel .result-detail { font-size: clamp(11px, 3vw, 14px); }
-    #end-panel .end-roster .r-line { font-size: clamp(10px, 2.8vw, 13px); gap: 6px; }
-    #end-panel .end-roster .r-avatar { width: 36px; height: 36px; }
-    #end-panel .end-banner { font-size: clamp(10px, 2.8vw, 13px); padding: 5px 8px; }
-    #end-panel .end-ach { font-size: clamp(10px, 2.8vw, 13px); padding: 4px 10px; }
+    /* 结局 */
+    #end-panel .box { padding: 4% 5%; max-width: 94%; max-height: 85%; }
+    #end-panel .result-detail { font-size: clamp(10px, 2.8vw, 13px); }
+    #end-panel .end-roster .r-line { font-size: clamp(9px, 2.6vw, 12px); gap: 5px; }
+    #end-panel .end-roster .r-avatar { width: 32px; height: 32px; }
+    #end-panel .end-banner { font-size: clamp(9px, 2.6vw, 12px); padding: 4px 8px; }
+    #end-panel .end-ach { font-size: clamp(9px, 2.6vw, 12px); padding: 3px 8px; }
 
-    /* 身份告知面板 */
+    /* 身份告知 */
     #identity-panel .id-card { padding: 5% 6%; }
-    #identity-panel .id-avatar { width: 100px; height: 100px; }
-    #identity-panel .id-card h2 { font-size: clamp(16px, 4.8vw, 24px); }
-    #identity-panel .id-name { font-size: clamp(13px, 3.8vw, 18px); }
-    #identity-panel .id-role { font-size: clamp(12px, 3.6vw, 17px); }
-    #identity-panel .id-skill { font-size: clamp(11px, 3vw, 14px); }
-    #identity-panel .id-guide { font-size: clamp(10px, 2.8vw, 13px); }
+    #identity-panel .id-avatar { width: 90px; height: 90px; }
+    #identity-panel .id-card h2 { font-size: clamp(14px, 4.4vw, 22px); }
+    #identity-panel .id-name { font-size: clamp(12px, 3.6vw, 17px); }
+    #identity-panel .id-role { font-size: clamp(11px, 3.4vw, 16px); }
+    #identity-panel .id-skill { font-size: clamp(10px, 2.8vw, 13px); }
+    #identity-panel .id-guide { font-size: clamp(9px, 2.6vw, 12px); }
 
     /* 知识点卡片 */
     #knowledge-panel .k-card { padding: 4% 5%; }
-    #knowledge-panel .k-card h2 { font-size: clamp(14px, 4vw, 20px); }
-    #knowledge-panel .k-card .k-content { font-size: clamp(11px, 3.2vw, 15px); }
-    #knowledge-panel .k-card .k-theory { font-size: clamp(10px, 2.8vw, 13px); }
+    #knowledge-panel .k-card h2 { font-size: clamp(13px, 3.8vw, 19px); }
+    #knowledge-panel .k-card .k-content { font-size: clamp(10px, 3vw, 14px); }
+    #knowledge-panel .k-card .k-theory { font-size: clamp(9px, 2.6vw, 12px); }
 
     /* 确认弹窗 */
     #confirm-modal .cm-box { padding: 5% 6%; }
-    #confirm-modal .cm-box p { font-size: clamp(12px, 3.4vw, 16px); }
-  }
-
-  /* 手机横屏：缩小历史面板，调整画布 */
-  @media (max-width: 900px) and (orientation: landscape) {
-    :root { --log-width: 180px; }
-    #game-root {
-      width: 100vw !important;
-      height: 100dvh !important;
-      aspect-ratio: auto !important;
-      box-shadow: none;
-    }
-    #log { font-size: clamp(8px, 1.1vw, 10px); padding: 4px 6px; }
-    .seat-avatar { width: clamp(28px, 4vw, 38px); height: clamp(28px, 4vw, 38px); }
-    .seat { width: clamp(36px, 5vw, 48px); }
-    #dialog { height: clamp(80px, 22vh, 110px); }
-    #dialog .d-portrait { width: 65px; min-width: 55px; }
-    #dialog .d-text { font-size: clamp(10px, 1.5vw, 13px); }
+    #confirm-modal .cm-box p { font-size: clamp(11px, 3.2vw, 15px); }
   }
 </style>
 </head>
