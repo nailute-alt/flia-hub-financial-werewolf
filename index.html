@@ -2500,8 +2500,8 @@ function settle(){
     if(id){
       const v = seatById(id);
       if(v){
-        const fZh = v.faction==='wolf' ? tB('revealWolf').zh : v.faction==='god' ? tB('revealGod').zh : tB('revealVillager').zh;
-        const fEn = v.faction==='wolf' ? tB('revealWolf').en : v.faction==='god' ? tB('revealGod').en : tB('revealVillager').en;
+        const fZh = v.faction==='wolf' ? (WOLF_LABEL.zh[v.type]||tB('revealWolf').zh) : v.faction==='god' ? (GOD_LABEL.zh[v.type]||tB('revealGod').zh) : tB('revealVillager').zh;
+        const fEn = v.faction==='wolf' ? (WOLF_LABEL.en[v.type]||tB('revealWolf').en) : v.faction==='god' ? (GOD_LABEL.en[v.type]||tB('revealGod').en) : tB('revealVillager').en;
         const nb = npcNameB(v.char.id);
         const slZh = v.char.id+'号', slEn = ''+v.char.id;
         say(null, B(`${slZh} ${nb.zh} 的身份是：${fZh}。`, `${slEn} ${nb.en} was a ${fEn}.`));
@@ -2597,7 +2597,10 @@ function endGame(endingId){
     }
     // 逐行小头像花名册（P1-1）
     const roster = G.seats.map(s=>{
-      const fct = s.faction==='wolf'?t('revealWolf'):s.faction==='god'?t('revealGod'):t('revealVillager');
+      let fct;
+      if(s.faction === 'wolf') fct = (WOLF_LABEL[LANG] && WOLF_LABEL[LANG][s.type]) || t('revealWolf');
+      else if(s.faction === 'god') fct = (GOD_LABEL[LANG] && GOD_LABEL[LANG][s.type]) || t('revealGod');
+      else fct = t('revealVillager');
       const status = s.alive ? ('<span class="r-alive">'+TXT('存活','Alive')+'</span>') : ('<span class="r-out">'+TXT('出局','Out')+'</span>');
       return `<div class="r-line${s.alive?'':' dead'}${s.isPlayer?' player-row':''}">`+
              `<img class="r-avatar" src="${asset('characters/'+s.char.portrait)}" alt="">`+
