@@ -240,7 +240,7 @@
     display: flex; align-items: center; justify-content: space-between;
     padding: 0 1.2%;
     background: rgba(44,24,16,0.78);
-    color: #F4EAD0; z-index: 30;
+    color: #F4EAD0; z-index: 50;  /* v3: 高于 overlay(40)，确保开篇时 lang-btn 可点击 */
     border-bottom: 3px solid #5a3a1a;
     font-size: clamp(11px, 1.7vw, 18px);
   }
@@ -554,7 +554,7 @@
   /* 逐行小头像花名册 */
   #end-panel .end-roster { margin-top: 8px; border-top: 2px dashed #c9a85a; padding-top: 8px; }
   #end-panel .end-roster .r-line { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: clamp(11px,1.6vw,15px); }
-  #end-panel .end-roster .r-avatar { width: 44px; height: 44px; object-fit: cover; object-position: center center; border-radius: 6px; border: 2px solid #8B6914; background: #FFF8E7; flex: 0 0 auto; }
+  #end-panel .end-roster .r-avatar { width: 44px; height: 44px; object-fit: cover; object-position: center top; border-radius: 6px; border: 2px solid #8B6914; background: #FFF8E7; flex: 0 0 auto; }
   #end-panel .end-roster .r-line.dead .r-avatar { filter: grayscale(100%); opacity: 0.6; }
   #end-panel .end-roster .r-name { font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   #end-panel .end-roster .r-out { color: #b03030; margin-left: auto; font-weight: bold; }
@@ -665,63 +665,9 @@
     border-bottom: 2px solid #e63946;
   }
   #observer-banner.show { display: block; }
-
-  /* ===================== 移动端：整体等比缩放方案 ===================== */
-  @media (max-width: 920px) {
-    html, body {
-      overflow: hidden;
-      width: 100%;
-      height: 100%;
-      margin: 0;
-      padding: 0;
-      background: #0d0d0d;
-      position: fixed;
-    }
-    body {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    /* 游戏画布保持原始1100x690设计尺寸，通过JS整体等比缩放 */
-    #game-root {
-      width: 1100px !important;
-      height: 690px !important;
-      aspect-ratio: auto !important;
-      max-width: none !important;
-      max-height: none !important;
-      box-shadow: none;
-      border-radius: 0;
-      flex-shrink: 0;
-      transform-origin: center center;
-    }
-    /* 头像兼容修复：center center 替代 center top */
-    .seat-avatar {
-      object-position: center center !important;
-      object-fit: cover !important;
-    }
-  }
-
-  /* 竖屏提示条 */
-  #mobile-hint {
-    display: none;
-    position: fixed;
-    top: 0; left: 0; right: 0;
-    background: #e63946;
-    color: #fff;
-    text-align: center;
-    padding: 5px 8px;
-    font-size: 12px;
-    font-weight: bold;
-    z-index: 9999;
-    letter-spacing: 0.5px;
-  }
-  @media (max-width: 920px) and (orientation: portrait) {
-    #mobile-hint { display: block; }
-  }
 </style>
 </head>
 <body>
-<div id="mobile-hint">📱 建议横屏体验更佳 / Rotate for better experience</div>
 <div id="game-root">
 
   <!-- 场景背景 -->
@@ -738,7 +684,7 @@
       <button class="ctrl-btn" id="btn-restart" onclick="confirmRestart()">重开</button>
       <button class="ctrl-btn" id="btn-undo" onclick="undoMove()" disabled>撤销</button>
       <button class="ctrl-btn" id="btn-menu" onclick="backToMenu()">主菜单</button>
-      <button class="pixel-btn" id="lang-btn" onclick="toggleLang()">EN / 中</button>
+      <button class="pixel-btn" id="lang-btn" onclick="toggleLang()">中</button>
     </div>
   </div>
 
@@ -783,19 +729,14 @@
   <!-- 起始遮罩 -->
   <!-- 起始遮罩（v0.5.3 P0-3：先选语言的主菜单） -->
   <div class="overlay" id="start-panel">
-    <h1 id="start-title">金融狼人杀</h1>
+    <h1 id="start-title">Financial Werewolf</h1>
     <p id="start-desc">
-      你是一名大学生，身处校园金融风暴之中。<br>
-      9 人局：3 狼 / 3 神 / 3 民。白天讨论投票找出狼人，夜晚狼人秘密行动。<br>
-      6 轮决策，迎来你的最终结局。
-    </p>
-    <p style="font-size:clamp(10px,1.5vw,13px);color:#ffd27a;margin-bottom:3%;line-height:1.6;">
-      📱 建议用手机相机扫码后选择浏览器打开（Safari / Chrome），微信内置浏览器可能显示异常<br>
-      📱 For best experience, scan with your phone camera & open in a browser (Safari/Chrome)
+      You are a college student caught in the middle of a campus financial storm.<br>
+      Nine-player setup: 3 Werewolves, 3 Gods, 3 Villagers. Discuss and vote to uncover werewolves by day; werewolves act in secret by night.<br>
+      Six rounds of decisions lead to your final ending.
     </p>
     <div class="start-lang-pick" id="start-lang-pick">
-      <button class="big-btn lang-start" id="start-zh" onclick="startGame('zh')">中文开始</button>
-      <button class="big-btn lang-start" id="start-en" onclick="startGame('en')">Start in English</button>
+      <button class="big-btn lang-start" id="start-game-btn" onclick="startGame()">Start Game</button>
     </div>
   </div>
 
@@ -852,7 +793,7 @@
 /* ---------- 0. 配置与 i18n 骨架（P2 将扩展为完整双语） ---------- */
 // 素材根目录：本文件位于 05_开发记录_dev/B3_游戏开发/，距项目根两级 → ../../
 const ASSET_BASE = './assets/';
-let LANG = 'zh'; // 'zh' | 'en'
+let LANG = 'en'; // 'zh' | 'en' (default en for academic book readers)
 
 const I18N = {
   zh: {
@@ -881,7 +822,7 @@ const I18N = {
     cmText: '确定要重新开始吗？当前进度将丢失', cmConfirm: '确定', cmCancel: '取消',
     next: '▼ 继续', undoEmpty: '暂无可撤销的步骤', hostName: '主持人',
     // v0.5.3：开始菜单 + 夜间行动 UI（玩家持有神/狼身份）
-    startPickLang: '请选择语言，开始游戏',
+    startPickLang: 'Choose your language to begin',
     nightWolfTitle: '🔪 狼人行动', nightWolfDesc: '选择今晚要击杀的目标（不能刀自己阵营）',
     nightSeerTitle: '🔮 预言家行动', nightSeerDesc: '查验一名玩家的真实身份',
     nightWitchTitle: '🧪 女巫行动', nightWitchDesc: '解药与毒药各限一次，谨慎使用',
@@ -1056,7 +997,14 @@ function markSpeaking(id){
 }
 
 // d-next 标签（P0-2：运行时 EN 文案）
-function updateNextLabel(){ const el=document.getElementById('d-next'); if(el) el.textContent = t('next'); }
+function updateNextLabel(){
+  const el=document.getElementById('d-next'); if(!el) return;
+  el.textContent = t('next');
+  // v5: 仅在确有对话正在播放/待播时显示「继续」提示。
+  // 开篇界面（G 为空）该按钮无功能且带 blink 闪烁，会误导玩家，故隐藏。
+  const hasDialog = !!(G && (G._curDialogItem || (G.dialogQueue && G.dialogQueue.length)));
+  el.style.display = hasDialog ? '' : 'none';
+}
 
 // 控制按钮 / 弹窗 双语标签（P0-4）
 function updateCtrlLabels(){
@@ -1065,6 +1013,9 @@ function updateCtrlLabels(){
   set('cm-text', t('cmText')); set('cm-yes', t('cmConfirm')); set('cm-no', t('cmCancel'));
   set('id-title', t('idTitle')); set('id-start', (LANG==='en'?'Start Game':'开始游戏'));
   set('restart-btn', (LANG==='en'?'Play Again':'再来一局'));
+  // v2: 右上角语言切换按钮文本（英文模式显示"中"，中文模式显示"EN"）
+  const lb = document.getElementById('lang-btn');
+  if(lb) lb.textContent = (LANG==='en') ? '中' : 'EN';
 }
 
 /* ---------- 0.6 右侧历史记录（P0-5） ---------- */
@@ -1519,10 +1470,14 @@ function renderStage(selectable=false, onPick=null){
 
 /* ---------- 8. 渲染：HUD 轮次 / 阶段 ---------- */
 function renderTopbar(){
+  // v4: 游戏未开始时(G=undefined)用默认值渲染，避免报错导致中文硬编码残留
+  const r = G ? G.round : 1;
+  const maxR = G ? G.maxRound : 6;
+  const ph = G ? G.phase : 'NIGHT';
   document.getElementById('round-info').textContent =
-    (LANG==='en' ? t('round')+' '+G.round+' '+t('roundOf') : t('round')+' '+G.round+' / '+G.maxRound+' '+t('roundOf'));
+    (LANG==='en' ? t('round')+' '+r+' '+t('roundOf') : t('round')+' '+r+' / '+maxR+' '+t('roundOf'));
   const phaseMap = { NIGHT:t('phaseNight'), DAY:t('phaseDay'), VOTE:t('phaseVote'), SETTLE:t('phaseSettle') };
-  document.getElementById('phase-info').textContent = phaseMap[G.phase] || '';
+  document.getElementById('phase-info').textContent = phaseMap[ph] || '';
   updateObserverBanner();
 }
 // v0.8 P0-1：出局玩家观察者横幅——玩家出局后在整个对局阶段显示「你已出局，作为旁观者观战」
@@ -1564,6 +1519,7 @@ function playDialogQueue(after){
 function advanceDialog(){
   if(G.dialogQueue.length === 0){
     const cb = G.pendingAfterDialog; G.pendingAfterDialog = null; G._curDialogItem = null;
+    updateNextLabel();  /* v5: 对话播完即隐藏「继续」提示，避免停留在无功能状态 */
     if(cb) cb();
     return;
   }
@@ -1619,7 +1575,8 @@ function log(html){ logB(html, { cls:'h-event' }); }
 
 /* ---------- 12. 主流程：开始 ---------- */
 function startGame(lang){
-  if(lang) LANG = (lang==='en') ? 'en' : 'zh';   // P0-3：开始菜单选择语言
+  if(lang) LANG = (lang==='en') ? 'en' : 'zh';   // P0-3：开始菜单选择语言（兼容旧调用）
+  // v2: 无参数调用时使用当前 LANG（由右上角 lang-btn 切换）
   document.documentElement.lang = (LANG==='en') ? 'en' : 'zh-CN';   // v0.8.1：驱动 :lang(en) 仅英文微调字号
   document.getElementById('start-panel').classList.add('hidden');
   updateObserverBanner(); // 开局时玩家未出局，确保横幅隐藏
@@ -2500,8 +2457,8 @@ function settle(){
     if(id){
       const v = seatById(id);
       if(v){
-        const fZh = v.faction==='wolf' ? (WOLF_LABEL.zh[v.type]||tB('revealWolf').zh) : v.faction==='god' ? (GOD_LABEL.zh[v.type]||tB('revealGod').zh) : tB('revealVillager').zh;
-        const fEn = v.faction==='wolf' ? (WOLF_LABEL.en[v.type]||tB('revealWolf').en) : v.faction==='god' ? (GOD_LABEL.en[v.type]||tB('revealGod').en) : tB('revealVillager').en;
+        const fZh = v.faction==='wolf' ? tB('revealWolf').zh : v.faction==='god' ? tB('revealGod').zh : tB('revealVillager').zh;
+        const fEn = v.faction==='wolf' ? tB('revealWolf').en : v.faction==='god' ? tB('revealGod').en : tB('revealVillager').en;
         const nb = npcNameB(v.char.id);
         const slZh = v.char.id+'号', slEn = ''+v.char.id;
         say(null, B(`${slZh} ${nb.zh} 的身份是：${fZh}。`, `${slEn} ${nb.en} was a ${fEn}.`));
@@ -2555,21 +2512,23 @@ function evaluateFinalEnding(goodWon){
   const net = st.coins - st.liability;
   const f = G.flags;
   let endingId;
-  // 1) 利诱/封口 → 被狼同化（最高优先，无论胜负与是否出局）
+  // 1) 利诱/封口 → 被狼同化
   if(f.collude) endingId = 'assimilated';
   // 2) 多米诺担保连锁 → 崩塌
   else if(f.dominoRisk && G.dominoChainActive) endingId = 'domino_collapse';
-  // 3) 好人阵营胜利 → 胜利结局（即使玩家中途出局，阵营胜利仍算胜利）
+  // 3) 玩家已出局：个人结局为失败（绝不给孤独幸存者），兜底被狼同化
+  else if(G.playerDead) endingId = 'assimilated';
+  // 4) 玩家存活 + 好人阵营胜利 → 胜利结局
   else if(goodWon){
     if(G.reportCount>=2 && st.literacy>80 && st.social>=6) endingId = 'community_hero';
     else if(net>10000 && st.liability===0) endingId = 'financial_freedom';
     else if(st.literacy>80 && f.exposed) endingId = 'knowledge_guardian';
     else endingId = 'knowledge_guardian';   // 胜利兜底：守住了本心与好人阵营
   }
-  // 4) 狼人阵营胜利（屠边）→ 孤独幸存者（须存活）或失败兜底
+  // 5) 玩家存活 + 狼人阵营胜利（屠边）→ 孤独幸存者（明哲保身）或失败兜底
   else {
-    if(!G.playerDead && st.social<40 && !f.justice) endingId = 'lone_survivor';
-    else endingId = 'assimilated';   // 狼人胜 + 玩家出局/非明哲保身 → 失败兜底
+    if(st.social<40 && !f.justice) endingId = 'lone_survivor';
+    else endingId = 'assimilated';
   }
   endGame(endingId);
 }
@@ -2597,10 +2556,7 @@ function endGame(endingId){
     }
     // 逐行小头像花名册（P1-1）
     const roster = G.seats.map(s=>{
-      let fct;
-      if(s.faction === 'wolf') fct = (WOLF_LABEL[LANG] && WOLF_LABEL[LANG][s.type]) || t('revealWolf');
-      else if(s.faction === 'god') fct = (GOD_LABEL[LANG] && GOD_LABEL[LANG][s.type]) || t('revealGod');
-      else fct = t('revealVillager');
+      const fct = s.faction==='wolf'?t('revealWolf'):s.faction==='god'?t('revealGod'):t('revealVillager');
       const status = s.alive ? ('<span class="r-alive">'+TXT('存活','Alive')+'</span>') : ('<span class="r-out">'+TXT('出局','Out')+'</span>');
       return `<div class="r-line${s.alive?'':' dead'}${s.isPlayer?' player-row':''}">`+
              `<img class="r-avatar" src="${asset('characters/'+s.char.portrait)}" alt="">`+
@@ -2656,12 +2612,19 @@ function toggleLang(){
 function renderStartLang(){
   document.getElementById('start-title').textContent = t('startTitle');
   updateCtrlLabels();
+  updateNextLabel();  /* v4: 切换语言时底部"继续"按钮同步更新 */
+  renderTopbar();     /* v4: 切换语言时顶部栏（轮次/阶段）同步更新；renderTopbar 已支持 !G 兜底 */
+  // v2: 同步更新 Start Game 按钮文本和右上角语言切换按钮
+  const sgb = document.getElementById('start-game-btn');
+  if(sgb) sgb.textContent = (LANG==='en') ? 'Start Game' : '开始游戏';
+  const lb = document.getElementById('lang-btn');
+  if(lb) lb.textContent = (LANG==='en') ? '中' : 'EN';
   const desc = document.getElementById('start-desc');
   // Bug4：移除版本号/开发信息（玩家不应看到）；标题/介绍中英双语；切英文后整界面英文。
   if(LANG==='en'){
-    desc.innerHTML = `You are a college student caught in a campus financial storm.<br>
-      9-player game: 3 Werewolves / 3 Seers-Witches-Hunters / 3 Villagers. Discuss and vote by day, werewolves strike by night.<br>
-      6 rounds of decisions lead to your final ending.`;
+    desc.innerHTML = `You are a college student caught in the middle of a campus financial storm.<br>
+      Nine-player setup: 3 Werewolves, 3 Gods, 3 Villagers. Discuss and vote to uncover werewolves by day; werewolves act in secret by night.<br>
+      Six rounds of decisions lead to your final ending.`;
   } else {
     desc.innerHTML = `你是一名大学生，身处校园金融风暴之中。<br>
       9 人局：3 狼 / 3 神 / 3 民。白天讨论投票找出狼人，夜晚狼人秘密行动。<br>
@@ -2680,25 +2643,11 @@ Object.defineProperty(window, 'G', {
 });
 
 /* ---------- 15. 初始化 ---------- */
+document.documentElement.lang = (LANG==='en') ? 'en' : 'zh-CN';  /* v5: 初始化 html lang，与默认 LANG 一致 */
 renderStartLang();
+renderTopbar();   /* v3: 初始化时渲染顶部栏（轮次/阶段默认英文） */
+updateNextLabel();  /* v4: 初始化时渲染底部"继续"按钮为当前语言 */
 initHistoryScroll();
-</script>
-<script>
-/* 移动端整体等比缩放：保持1100x690设计尺寸，按视口等比缩小 */
-(function() {
-  function applyScale() {
-    var root = document.getElementById('game-root');
-    if (!root) return;
-    var isMobile = window.innerWidth <= 920;
-    if (!isMobile) { root.style.transform = ''; return; }
-    var scale = Math.min(window.innerWidth / 1100, window.innerHeight / 690);
-    root.style.transform = 'scale(' + scale + ')';
-  }
-  window.addEventListener('load', applyScale);
-  window.addEventListener('resize', applyScale);
-  window.addEventListener('orientationchange', function() { setTimeout(applyScale, 200); });
-  applyScale();
-})();
 </script>
 </body>
 </html>
