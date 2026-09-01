@@ -299,7 +299,7 @@
   }
 
   /* ===================== v1.0 中央舞台：桌游围桌布局（替代 v0.8.1 3×3 网格） ===================== */
-  :root { --log-width: 260px; }
+  :root { --log-width: clamp(160px, 23.6%, 260px); }   /* v9: 260/1100=23.6%，随容器等比缩放，桌面端不变 */
   #game-table {
     position: absolute; left: 0; right: var(--log-width);
     top: 18.2%; bottom: 30%;
