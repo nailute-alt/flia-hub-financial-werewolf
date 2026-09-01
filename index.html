@@ -513,6 +513,9 @@
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     text-align: center; padding: 4%;
     background: rgba(13,10,5,0.82); color: #F4EAD0;
+    overflow-y: auto; -webkit-overflow-scrolling: touch;  /* v6: 小屏弹窗可滚动 */
+    /* v6: 内容超高时退回 flex-start，否则 justify-content:center 会让顶部溢出部分滚不到 */
+    justify-content: safe center;
   }
   .overlay.hidden { display: none; }
   .overlay h1 { font-size: clamp(22px, 4.5vw, 44px); color: #ffd27a; margin-bottom: 2%; text-shadow: 0 3px 0 #5a3a1a; }
@@ -584,6 +587,10 @@
   #identity-panel .id-card {
     background: #fbf3df; color: #3a2410; border: 4px solid #8B6914; border-radius: 14px;
     padding: 4% 5%; max-width: 620px; width: 92%; box-shadow: 0 8px 0 #5a3a1a; text-align: center;
+    /* v6: 用 100%（相对 #game-root 高度）而非 86vh —— 弹窗容器是 #game-root，
+       手机竖屏下它只有约 235~270px 高，用 vh 会远超容器继续溢出。
+       overflow-y:auto 同时让 min-height:auto 归零，卡片才可被压缩。 */
+    max-height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch;
   }
   #identity-panel .id-card h2 { color: #8a2b00; font-size: clamp(18px,3vw,30px); margin-bottom: 2%; text-shadow: 0 2px 0 #e8d39a; }
   #identity-panel .id-avatar { width: 150px; height: 150px; object-fit: cover; object-position: center top; border-radius: 10px; border: 3px solid #8B6914; background: #FFF8E7; margin: 0 auto 3%; display: block; }
@@ -665,6 +672,22 @@
     border-bottom: 2px solid #e63946;
   }
   #observer-banner.show { display: block; }
+
+  /* ===================== v6：窄屏 / 手机竖屏弹窗适配 =====================
+     判据用 max-width 而非 max-height：#game-root 为 aspect-ratio:1100/690，
+     画布高度由宽度决定（375px 宽 → 仅 235px 高），而 iPhone12(844)/14ProMax(932)
+     的视口高度都大于 700，用 max-height:700px 会漏掉这两个主力机型。 */
+  @media (max-width: 820px) {
+    .overlay { padding: 2%; }
+    #identity-panel .id-card { padding: 3% 4%; width: 96%; max-height: 100%; }
+    #identity-panel .id-avatar { width: 88px; height: 88px; margin-bottom: 2%; }
+    #identity-panel .id-card h2 { font-size: 17px; margin-bottom: 1%; }
+    #identity-panel .id-name { font-size: 14px; margin-bottom: 1%; }
+    #identity-panel .id-role { font-size: 13px; margin-bottom: 1.5%; }
+    #identity-panel .id-skill { font-size: 11.5px; line-height: 1.55; padding: 2% 2.5%; margin-bottom: 2%; }
+    #identity-panel .id-guide { font-size: 10.5px; margin-bottom: 2%; padding-top: 4px; line-height: 1.5; }
+    #identity-panel .big-btn { font-size: 14px; padding: 7px 20px; border-width: 3px; }
+  }
 </style>
 </head>
 <body>
