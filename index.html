@@ -711,18 +711,23 @@
     }
     #topbar {
       position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important;
-      width: 100vw !important; z-index: 100 !important;
+      width: 100vw !important; height: auto !important; z-index: 100 !important;  /* v11: 内容撑开，避免8.7%估算偏差 */
     }
     #statusbar {
-      position: fixed !important; top: 78px !important; left: 0 !important; right: 0 !important;
-      width: 100vw !important;   /* 保持原 z-index(29) < 弹窗，弹窗时由弹窗覆盖 */
+      position: fixed !important; top: 37px !important; left: 0 !important; right: 0 !important;
+      width: 100vw !important; height: auto !important;   /* v11: top=实测顶栏高(37px)，消除顶栏↔状态栏间~41px黑隙 */
     }
     #dialog, .dialog-box, .narrator-dialog {
       position: fixed !important; bottom: 0 !important; left: 0 !important; right: var(--log-width) !important;
-      width: auto !important;    /* 保持在右侧 log 面板左侧，不覆盖 log（验收#6） */
+      width: auto !important;    /* 保持在右侧 log 面板左侧，不覆盖 log */
     }
-    #scene, #stage, #game-table, #log {
-      top: 78px !important; bottom: 120px !important;
+    #scene, #game-table, #log {
+      top: 78px !important; bottom: 115px !important;   /* 顶=顶栏37+状态栏41；底=视口高-#dialog高(115)，贴住底栏 */
+    }
+    /* #stage 是 #game-table 的子元素（offsetParent=game-table）。若沿用 top:78/bottom:120 会相对 game-table
+       再偏移，把舞台压成 ~34px，导致座位挤成一条线（v10"过扁"根因）。改回 inset:0 使其填满 game-table。 */
+    #stage {
+      top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
     }
     /* 身份面板在横屏短高度下紧凑化：
        v6 的紧凑规则原本只按宽度 max-width:820px 命中，横屏手机宽 844~932 不命中，
@@ -1445,9 +1450,9 @@ function seatPointByIndex(idx){
     ['96%','40%'],  // 5 右上
     ['37%','80%'],  // 6 左下
     ['96%','80%'],  // 7 右下
-    ['54%','93%'],  // 8 下左  v8: 从100%上调，避免被底部截断
-    ['66%','93%'],  // 9 下中
-    ['78%','93%']   // 10 下右
+    ['54%','84%'],  // 8 下左  v11: 从93%下调至84%，修复横屏游戏区过扁时底排座位被底部截断(~14px)
+    ['66%','84%'],  // 9 下中
+    ['78%','84%']   // 10 下右
   ];
   return pts[idx] || ['50%','50%'];
 }
