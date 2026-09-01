@@ -317,7 +317,7 @@
     position: absolute;
     transform: translate(-50%, -50%);
     display: flex; flex-direction: column; align-items: center;
-    width: clamp(44px, 4.2vw, 56px);
+    width: clamp(38px, 7.2%, 56px);   /* v8: % 相对 stage 宽度，随容器等比缩放 */
     background: rgba(244,234,208,0.86);
     border: 2px solid #5a3a1a; border-radius: 8px;
     padding: 1px 1px 2px;
@@ -328,30 +328,30 @@
   }
   .seat.selectable { pointer-events: auto; }
   .seat-avatar {
-    width: clamp(36px, 3.2vw, 46px);
-    height: clamp(36px, 3.2vw, 46px);
+    width: 84%;   /* v8: 相对 .seat（其宽度已按 stage 等比缩放），头像随容器等比缩放；square 由 aspect-ratio 保证 */
+    height: auto; aspect-ratio: 1 / 1;
     object-fit: cover; object-position: center top;
     border-radius: 6px; image-rendering: auto;
     border: 2px solid #8B6914; background: #FFF8E7;
   }
   .seat-no {
-    font-size: clamp(6px, 0.62vw, 9px);
+    font-size: 7px;   /* v8: px 替代 vw，避免容器变窄时文字相对过大 */
     font-weight: bold; color: #2C1810; margin-top: 1px;
     line-height: 1.1;
   }
   .seat-name {
-    width: clamp(40px, 3.8vw, 52px);
+    width: 48px;   /* v8: px 替代 vw */
     text-align: center;
-    font-size: clamp(5px, 0.56vw, 8px); color: #5a3a1a;
+    font-size: 7px; color: #5a3a1a;
     line-height: 1.1;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .seat-tag {
     display: none;
-    width: clamp(54px, 4.8vw, 70px);
+    width: 70px;   /* v8: px 替代 vw */
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  :root:lang(en) .seat-name { font-size: clamp(5px, 0.52vw, 7px); }
+  :root:lang(en) .seat-name { font-size: 6px; }   /* v8: px 替代 vw */
   .seat.dead .seat-avatar { filter: grayscale(100%); opacity: 0.58; border-color: #999; }
   .seat.dead { cursor: not-allowed; }
   .seat.dead::after {
@@ -1399,9 +1399,9 @@ function seatPointByIndex(idx){
     ['96%','40%'],  // 5 右上
     ['37%','80%'],  // 6 左下
     ['96%','80%'],  // 7 右下
-    ['54%','100%'], // 8 下左
-    ['66%','100%'], // 9 下中
-    ['78%','100%']  // 10 下右
+    ['54%','93%'],  // 8 下左  v8: 从100%上调，避免被底部截断
+    ['66%','93%'],  // 9 下中
+    ['78%','93%']   // 10 下右
   ];
   return pts[idx] || ['50%','50%'];
 }
