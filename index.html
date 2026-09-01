@@ -513,13 +513,14 @@
   /* ===================== 起始 / 结束遮罩 ===================== */
   .overlay {
     position: absolute; inset: 0; z-index: 40;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
     text-align: center; padding: 4%;
     background: rgba(13,10,5,0.82); color: #F4EAD0;
     overflow-y: auto; -webkit-overflow-scrolling: touch;  /* v6: 小屏弹窗可滚动 */
-    /* v6: 内容超高时退回 flex-start，否则 justify-content:center 会让顶部溢出部分滚不到 */
-    justify-content: safe center;
   }
+  /* v10: 用子元素 auto margin 做垂直居中；内容超高时回退为顶部对齐且可滚动
+     修复 justify-content:center 在内容溢出视口时两端都滚不到（开始游戏按钮被推到不可达区） */
+  .overlay > * { margin-top: auto; margin-bottom: auto; }
   .overlay.hidden { display: none; }
   .overlay h1 { font-size: clamp(22px, 4.5vw, 44px); color: #ffd27a; margin-bottom: 2%; text-shadow: 0 3px 0 #5a3a1a; }
   .overlay p { font-size: clamp(12px, 2vw, 18px); line-height: 1.7; max-width: 760px; margin-bottom: 3%; }
@@ -683,6 +684,51 @@
   @media (max-width: 820px) {
     .overlay { padding: 2%; }
     #identity-panel .id-card { padding: 3% 4%; width: 96%; max-height: 100%; }
+    #identity-panel .id-avatar { width: 88px; height: 88px; margin-bottom: 2%; }
+    #identity-panel .id-card h2 { font-size: 17px; margin-bottom: 1%; }
+    #identity-panel .id-name { font-size: 14px; margin-bottom: 1%; }
+    #identity-panel .id-role { font-size: 13px; margin-bottom: 1.5%; }
+    #identity-panel .id-skill { font-size: 11.5px; line-height: 1.55; padding: 2% 2.5%; margin-bottom: 2%; }
+    #identity-panel .id-guide { font-size: 10.5px; margin-bottom: 2%; padding-top: 4px; line-height: 1.5; }
+    #identity-panel .big-btn { font-size: 14px; padding: 7px 20px; border-width: 3px; }
+  }
+
+  /* ===================== v10：横屏手机全屏布局重构 =====================
+     仅命中 (orientation:landscape) and (max-width:1024px) → iPhone 横屏等；
+     桌面(>1024)与 iPad 横屏(1194>1024)与竖屏均不受影响。
+     实测：topbar 高37px、statusbar 高41px(底沿78px)、底部 #dialog 高115px。
+     - game-root 填满视口，去掉左右黑边
+     - 顶栏/状态栏/对话框 fixed 钉在视口边缘
+     - 场景/舞台/桌面区/右侧log 让出顶部78px与底部120px(对话框115+留白)
+     注意：statusbar/dialog 故意保持原 z-index(<弹窗40/50)，使身份/投票等弹窗能正常覆盖它们，
+           避免底部对话框压住身份面板的「开始游戏」按钮（与现桌面行为一致）。 */
+  @media (orientation: landscape) and (max-width: 1024px) {
+    #game-root {
+      width: 100vw !important;
+      height: 100dvh !important;
+      aspect-ratio: auto !important;
+      max-height: none !important;
+    }
+    #topbar {
+      position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important;
+      width: 100vw !important; z-index: 100 !important;
+    }
+    #statusbar {
+      position: fixed !important; top: 78px !important; left: 0 !important; right: 0 !important;
+      width: 100vw !important;   /* 保持原 z-index(29) < 弹窗，弹窗时由弹窗覆盖 */
+    }
+    #dialog, .dialog-box, .narrator-dialog {
+      position: fixed !important; bottom: 0 !important; left: 0 !important; right: var(--log-width) !important;
+      width: auto !important;    /* 保持在右侧 log 面板左侧，不覆盖 log（验收#6） */
+    }
+    #scene, #stage, #game-table, #log {
+      top: 78px !important; bottom: 120px !important;
+    }
+    /* 身份面板在横屏短高度下紧凑化：
+       v6 的紧凑规则原本只按宽度 max-width:820px 命中，横屏手机宽 844~932 不命中，
+       导致面板沿用桌面大尺寸（头像150px），内容超高把「开始游戏」挤出视口。
+       此处由 v10 横屏专属媒体查询补齐，确保按钮可达。 */
+    #identity-panel .id-card { padding: 3% 4%; width: 96%; max-height: 100%; overflow-y: auto; }
     #identity-panel .id-avatar { width: 88px; height: 88px; margin-bottom: 2%; }
     #identity-panel .id-card h2 { font-size: 17px; margin-bottom: 1%; }
     #identity-panel .id-name { font-size: 14px; margin-bottom: 1%; }
